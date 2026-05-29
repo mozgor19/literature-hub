@@ -49,20 +49,33 @@ export async function POST(request: Request) {
   }
 
   // Determine Drive parent folder
+  const fallbackToken = session.accessToken
   let driveParentId = process.env.DRIVE_ROOT_FOLDER_ID!
   if (parent_id) {
     const { data: parentField } = await supabase
       .from("fields")
-      .select("drive_folder_id")
+      .select("id, name, drive_folder_id")
       .eq("id", parent_id)
       .single()
     if (parentField?.drive_folder_id) {
       driveParentId = parentField.drive_folder_id
+    } else if (parentField) {
+      // Parent field exists but has no Drive folder yet — create it now
+      try {
+        const newFolderId = await createDriveFolder(
+          parentField.name,
+          process.env.DRIVE_ROOT_FOLDER_ID!,
+          fallbackToken
+        )
+        await supabase.from("fields").update({ drive_folder_id: newFolderId }).eq("id", parent_id)
+        driveParentId = newFolderId
+      } catch (err) {
+        console.error("Parent Drive folder creation failed, falling back to root:", err)
+      }
     }
   }
 
   // Create Drive folder (service account preferred; user token as fallback)
-  const fallbackToken = session.accessToken
   let driveFolderId: string | null = null
   try {
     driveFolderId = await createDriveFolder(name.trim(), driveParentId, fallbackToken)

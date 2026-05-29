@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSession } from "next-auth/react"
 import { toast } from "sonner"
-import { FolderOpen, FolderClosed, Plus, Loader2, ChevronDown, ChevronRight } from "lucide-react"
+import { FolderOpen, FolderClosed, Plus, Loader2, ChevronDown, ChevronRight, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -15,11 +16,14 @@ import type { FieldWithChildren } from "@/types/database"
 
 export function FieldTree() {
   const queryClient = useQueryClient()
+  const { data: session } = useSession()
+  const isAdminUser = session?.user?.isAdmin ?? false
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [showDialog, setShowDialog] = useState(false)
   const [newFieldName, setNewFieldName] = useState("")
   const [newFieldParentId, setNewFieldParentId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const { data: fields = [], isLoading } = useQuery<FieldWithChildren[]>({
     queryKey: ["fields"],
@@ -38,6 +42,23 @@ export function FieldTree() {
     setNewFieldParentId(parentId)
     setNewFieldName("")
     setShowDialog(true)
+  }
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`"${name}" alanını silmek istediğinize emin misiniz? Drive klasörü de silinecek.`)) return
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/fields/${id}`, { method: "DELETE" })
+      const data = await res.json() as { error?: string; warning?: string }
+      if (!res.ok) { toast.error(data.error ?? "Silinemedi"); return }
+      if (data.warning) toast.warning(data.warning)
+      else toast.success(`"${name}" silindi`)
+      await queryClient.invalidateQueries({ queryKey: ["fields"] })
+    } catch {
+      toast.error("Bir hata oluştu")
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const handleCreate = async () => {
@@ -132,6 +153,20 @@ export function FieldTree() {
                     <Plus className="h-3.5 w-3.5" />
                     Alt Alan
                   </Button>
+                  {isAdminUser && field.children.length === 0 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      title="Alanı sil"
+                      disabled={deletingId === field.id}
+                      onClick={() => handleDelete(field.id, field.name)}
+                    >
+                      {deletingId === field.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Trash2 className="h-3.5 w-3.5" />}
+                    </Button>
+                  )}
                 </div>
 
                 {isExpanded && field.children.length > 0 && (
@@ -145,6 +180,20 @@ export function FieldTree() {
                         <span className="text-sm flex-1">{child.name}</span>
                         {child.drive_folder_id && (
                           <span className="text-xs text-muted-foreground">Drive ✓</span>
+                        )}
+                        {isAdminUser && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                            title="Alt alanı sil"
+                            disabled={deletingId === child.id}
+                            onClick={() => handleDelete(child.id, child.name)}
+                          >
+                            {deletingId === child.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Trash2 className="h-3 w-3" />}
+                          </Button>
                         )}
                       </div>
                     ))}
