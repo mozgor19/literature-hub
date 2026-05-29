@@ -4,7 +4,7 @@ import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Upload, Plus, Loader2, Sparkles } from "lucide-react"
+import { Upload, Plus, Loader2, Sparkles, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,15 +20,44 @@ interface SelectedTag {
   name: string
 }
 
-interface ExtractedMetadata {
+type MetadataFieldSource = "embedded" | "heuristic" | "crossref" | "crossref-title" | "arxiv"
+
+interface HeuristicResponse {
   title: string | null
   authors: string | null
   year: number | null
   abstract: string | null
   tags: string[]
-  sourceUrl?: string | null
-  doi?: string | null
-  strategy?: "crossref" | "heuristic"
+  doi: string | null
+  arxivId: string | null
+  fieldSources: Partial<Record<string, "embedded" | "heuristic">>
+}
+
+interface LookupResponse {
+  title: string | null
+  authors: string | null
+  year: number | null
+  abstract: string | null
+  tags: string[]
+  sourceUrl: string | null
+  doi: string | null
+  journal: string | null
+  lookupSource: "crossref" | "crossref-title" | "arxiv"
+  fieldSources: Partial<Record<string, "crossref" | "crossref-title" | "arxiv">>
+}
+
+// Small badge shown next to labels for auto-filled fields
+function SourceBadge({ source }: { source: MetadataFieldSource | undefined }) {
+  if (!source) return null
+  const cfg: Record<MetadataFieldSource, { label: string; cls: string }> = {
+    embedded:       { label: "PDF",      cls: "bg-slate-100 text-slate-600" },
+    heuristic:      { label: "PDF",      cls: "bg-slate-100 text-slate-600" },
+    crossref:       { label: "Crossref", cls: "bg-blue-100 text-blue-700" },
+    "crossref-title": { label: "Crossref", cls: "bg-blue-100 text-blue-700" },
+    arxiv:          { label: "arXiv",    cls: "bg-green-100 text-green-700" },
+  }
+  const { label, cls } = cfg[source]
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ml-1.5 ${cls}`}>{label}</span>
 }
 
 interface ManualOverrides {
@@ -59,7 +88,11 @@ export function AddArticleForm() {
   const [tags, setTags] = useState<SelectedTag[]>([])
   const [file, setFile] = useState<File | null>(null)
   const [extractingMetadata, setExtractingMetadata] = useState(false)
+  const [lookingUp, setLookingUp] = useState(false)
   const [extractionSummary, setExtractionSummary] = useState<string | null>(null)
+  const [fieldSources, setFieldSources] = useState<Partial<Record<string, MetadataFieldSource>>>({})
+  const [detectedDoi, setDetectedDoi] = useState<string | null>(null)
+  const [detectedArxivId, setDetectedArxivId] = useState<string | null>(null)
   const [, setManualOverrides] = useState<ManualOverrides>({
     title: false,
     authors: false,
@@ -117,83 +150,123 @@ export function AddArticleForm() {
     setManualOverrides(next)
   }
 
-  const applyExtractedMetadata = (metadata: ExtractedMetadata) => {
-    const overrides = manualOverridesRef.current
+  // Apply metadata from either heuristic or lookup phase, respecting manual overrides.
+  const applyMetadata = (
+    data: { title?: string | null; authors?: string | null; year?: number | null; abstract?: string | null; tags?: string[] },
+    sources: Partial<Record<string, MetadataFieldSource>>,
+    sourceUrl?: string | null
+  ) => {
+    const ov = manualOverridesRef.current
+    if (!ov.title && data.title) setTitle(data.title)
+    if (!ov.authors && data.authors) setAuthors(data.authors)
+    if (!ov.year && data.year) setYear(String(data.year))
+    if (!ov.abstract && data.abstract) setAbstract(data.abstract)
+    if (!ov.sourceUrl && sourceUrl) setSourceUrl(sourceUrl)
+    if (!ov.tags && data.tags?.length) setTags(data.tags.map(t => ({ id: null, name: t })))
 
-    if (!overrides.title) setTitle(metadata.title ?? "")
-    if (!overrides.authors) setAuthors(metadata.authors ?? "")
-    if (!overrides.year) setYear(metadata.year ? String(metadata.year) : "")
-    if (!overrides.abstract) setAbstract(metadata.abstract ?? "")
-    if (!overrides.sourceUrl) setSourceUrl(metadata.sourceUrl ?? "")
+    setFieldSources(prev => ({ ...prev, ...sources }))
+  }
 
-    if (!overrides.tags) {
-      setTags(metadata.tags.map((tag) => ({ id: null, name: tag })))
-    }
+  // Trigger the remote lookup phase (Crossref / arXiv) — non-blocking.
+  const triggerLookup = async (
+    doi: string | null,
+    arxivId: string | null,
+    titleHint: string | null
+  ) => {
+    setLookingUp(true)
+    try {
+      const params = new URLSearchParams()
+      if (doi) params.set("doi", doi)
+      else if (arxivId) params.set("arxiv", arxivId)
+      else if (titleHint) params.set("title", titleHint)
+      else return
 
-    const populated = [
-      metadata.title ? "başlık" : null,
-      metadata.authors ? "yazarlar" : null,
-      metadata.year ? "yıl" : null,
-      metadata.abstract ? "özet" : null,
-      metadata.tags.length > 0 ? "etiketler" : null,
-    ].filter(Boolean)
+      const res = await fetch(`/api/articles/lookup?${params}`)
+      if (res.status === 204) return // nothing found
 
-    if (populated.length > 0) {
-      setExtractionSummary(
-        metadata.strategy === "crossref"
-          ? `PDF içinden DOI bulundu ve Crossref üzerinden ${populated.join(", ")} için öneriler getirildi. Lütfen doğruluğunu kontrol edin.`
-          : `PDF içeriğinden ${populated.join(", ")} için öneriler getirildi. Lütfen doğruluğunu kontrol edin.`
-      )
-    } else {
-      setExtractionSummary("PDF yüklendi, ancak otomatik doldurulabilecek güçlü bir metadata bulunamadı.")
+      if (!res.ok) return
+      const data = await res.json() as LookupResponse
+
+      applyMetadata(data, data.fieldSources, data.sourceUrl ?? undefined)
+
+      const src = data.lookupSource === "arxiv" ? "arXiv" : "Crossref"
+      const filled = [
+        data.title && "başlık", data.authors && "yazarlar",
+        data.year && "yıl", data.abstract && "özet",
+        data.tags?.length && "etiketler",
+      ].filter(Boolean)
+      if (filled.length) {
+        setExtractionSummary(
+          `${src} üzerinden ${filled.join(", ")} için doğrulanmış öneriler getirildi. Kaydetmeden önce kontrol edin.`
+        )
+      }
+    } catch {
+      // Silently ignore lookup errors — heuristic values remain
+    } finally {
+      setLookingUp(false)
     }
   }
 
   const handleFileChange = async (nextFile: File | null) => {
     setFile(nextFile)
     setExtractionSummary(null)
+    setFieldSources({})
+    setDetectedDoi(null)
+    setDetectedArxivId(null)
     resetManualOverrides()
 
     if (!nextFile) return
 
     if (nextFile.size / 1024 / 1024 > VERCEL_SAFE_PDF_LIMIT_MB) {
       toast.warning(
-        `Bu PDF ${VERCEL_SAFE_PDF_LIMIT_MB} MB üzeri. Vercel deployunda yükleme başarısız olabilir; mümkünse daha küçük PDF veya yalnızca kaynak URL kullanın.`
+        `Bu PDF ${VERCEL_SAFE_PDF_LIMIT_MB} MB üzeri. Vercel deployunda yükleme başarısız olabilir.`
       )
     }
 
+    // ── Phase 1: fast heuristic parse (no network calls) ───────────────────
     setExtractingMetadata(true)
-
+    let heuristic: HeuristicResponse | null = null
     try {
-      const formData = new FormData()
-      formData.append("file", nextFile)
-
-      const res = await fetch("/api/articles/extract", { method: "POST", body: formData })
-      const raw = await res.text()
-
-      let data: (ExtractedMetadata & { error?: string }) | null = null
-      if (raw) {
-        const contentType = res.headers.get("content-type") ?? ""
-
-        if (contentType.includes("application/json")) {
-          data = JSON.parse(raw) as ExtractedMetadata & { error?: string }
-        } else {
-          throw new Error("PDF analizi servisi beklenmeyen bir cevap döndü")
-        }
-      }
-
-      if (!res.ok) {
-        throw new Error(data?.error ?? "PDF analizi yapılamadı")
-      }
-
-      applyExtractedMetadata(data as ExtractedMetadata)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "PDF analizi yapılamadı"
-      setExtractionSummary("PDF yüklendi. Bilgiler otomatik getirilemedi, alanları elle doldurabilirsiniz.")
-      toast.error(message)
+      const fd = new FormData()
+      fd.append("file", nextFile)
+      const res = await fetch("/api/articles/extract", { method: "POST", body: fd })
+      if (res.ok) heuristic = await res.json() as HeuristicResponse
+    } catch {
+      // ignore
     } finally {
       setExtractingMetadata(false)
     }
+
+    if (heuristic) {
+      applyMetadata(heuristic, heuristic.fieldSources)
+      setDetectedDoi(heuristic.doi ?? null)
+      setDetectedArxivId(heuristic.arxivId ?? null)
+
+      const populated = [
+        heuristic.title && "başlık", heuristic.authors && "yazarlar",
+        heuristic.year && "yıl", heuristic.abstract && "özet",
+        heuristic.tags.length && "etiketler",
+      ].filter(Boolean)
+      setExtractionSummary(
+        populated.length
+          ? `PDF'ten ${populated.join(", ")} için öneriler getirildi. ${heuristic.doi || heuristic.arxivId ? "Kaynak aranıyor…" : "Kaydetmeden önce kontrol edin."}`
+          : "PDF okundu. Güçlü bir metadata bulunamadı, alanları elle doldurun."
+      )
+    } else {
+      setExtractionSummary("PDF yüklendi. Bilgiler otomatik getirilemedi.")
+    }
+
+    // ── Phase 2: remote lookup — runs concurrently, updates form when ready ─
+    void triggerLookup(
+      heuristic?.doi ?? null,
+      heuristic?.arxivId ?? null,
+      heuristic?.title ?? null
+    )
+  }
+
+  // Re-fetch button: re-run lookup with current DOI/arXiv/title
+  const handleRefetchMetadata = () => {
+    void triggerLookup(detectedDoi, detectedArxivId, title || null)
   }
 
   const handleCreateField = async () => {
@@ -309,9 +382,10 @@ export function AddArticleForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="title">
-              Başlık <span className="text-destructive">*</span>
-            </Label>
+            <div className="flex items-center">
+              <Label htmlFor="title">Başlık <span className="text-destructive">*</span></Label>
+              <SourceBadge source={fieldSources.title as MetadataFieldSource | undefined} />
+            </div>
             <Input
               id="title"
               value={title}
@@ -325,9 +399,10 @@ export function AddArticleForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="authors">
-              Yazarlar <span className="text-destructive">*</span>
-            </Label>
+            <div className="flex items-center">
+              <Label htmlFor="authors">Yazarlar <span className="text-destructive">*</span></Label>
+              <SourceBadge source={fieldSources.authors as MetadataFieldSource | undefined} />
+            </div>
             <Input
               id="authors"
               value={authors}
@@ -342,7 +417,10 @@ export function AddArticleForm() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="year">Yıl</Label>
+              <div className="flex items-center">
+                <Label htmlFor="year">Yıl</Label>
+                <SourceBadge source={fieldSources.year as MetadataFieldSource | undefined} />
+              </div>
               <Input
                 id="year"
                 type="number"
@@ -371,7 +449,10 @@ export function AddArticleForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="abstract">Özet</Label>
+            <div className="flex items-center">
+              <Label htmlFor="abstract">Özet</Label>
+              <SourceBadge source={fieldSources.abstract as MetadataFieldSource | undefined} />
+            </div>
             <Textarea
               id="abstract"
               value={abstract}
@@ -540,16 +621,34 @@ export function AddArticleForm() {
               onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
             />
           </label>
-          <div className="min-h-5">
-            {extractingMetadata ? (
+          <div className="min-h-5 space-y-1">
+            {extractingMetadata && (
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                PDF analiz ediliyor, alanlar otomatik doldurulacak...
+                PDF okunuyor…
               </p>
-            ) : (
-              extractionSummary && (
-                <p className="text-xs text-muted-foreground">{extractionSummary}</p>
-              )
+            )}
+            {lookingUp && !extractingMetadata && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Crossref / arXiv üzerinde aranıyor…
+              </p>
+            )}
+            {!extractingMetadata && !lookingUp && extractionSummary && (
+              <div className="flex items-start gap-2">
+                <p className="flex-1 text-xs text-muted-foreground">{extractionSummary}</p>
+                {file && (
+                  <button
+                    type="button"
+                    onClick={handleRefetchMetadata}
+                    className="flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
+                    title="Metadata'yı yeniden ara"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Yeniden ara
+                  </button>
+                )}
+              </div>
             )}
           </div>
           {file && exceedsVercelSafeLimit && (
