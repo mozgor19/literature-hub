@@ -1,48 +1,67 @@
 import { google } from "googleapis"
 import { Readable } from "stream"
 
-// ─── Service-account client (singleton per process) ─────────────────────────
-// All Drive operations go through a service account so that:
-//  1. User OAuth only requests basic (non-sensitive) scopes → no consent warning
-//  2. The shared folder is always accessible regardless of which user is signed in
-//  3. Token expiry / refresh is handled automatically by the googleapis JWT client
+// ─── Client factories ─────────────────────────────────────────────────────────
 
+// Service-account singleton (long-lived, handles its own token refresh)
 let _serviceAccountClient: ReturnType<typeof google.drive> | null = null
 
-function getServiceAccountDriveClient(): ReturnType<typeof google.drive> {
+function buildServiceAccountClient(): ReturnType<typeof google.drive> {
   if (_serviceAccountClient) return _serviceAccountClient
 
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-  if (!raw) {
-    throw new Error(
-      "GOOGLE_SERVICE_ACCOUNT_JSON is not set. " +
-        "Create a service account, share the Drive root folder with it, " +
-        "and set the env var to the base64-encoded key JSON. See README."
-    )
-  }
-
-  // Accept plain JSON or base64-encoded JSON
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON!
   let decoded: string
   try {
     decoded = Buffer.from(raw, "base64").toString("utf-8")
-    JSON.parse(decoded) // validate
+    JSON.parse(decoded)
   } catch {
-    decoded = raw
+    decoded = raw // already plain JSON
   }
 
   const key = JSON.parse(decoded) as { client_email: string; private_key: string }
-
   const auth = new google.auth.JWT({
     email: key.client_email,
     key: key.private_key,
     scopes: ["https://www.googleapis.com/auth/drive"],
   })
-
   _serviceAccountClient = google.drive({ version: "v3", auth })
   return _serviceAccountClient
 }
 
-// ─── Retry helper ────────────────────────────────────────────────────────────
+function buildUserOAuthClient(accessToken: string): ReturnType<typeof google.drive> {
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  )
+  auth.setCredentials({ access_token: accessToken })
+  return google.drive({ version: "v3", auth })
+}
+
+/**
+ * Returns a Drive client.
+ *
+ * Priority:
+ *   1. Service account  (GOOGLE_SERVICE_ACCOUNT_JSON)  — preferred; shared access, no expiry
+ *   2. User OAuth token (fallbackAccessToken)           — works while token is valid
+ *
+ * If neither is available the function throws a clear setup error.
+ */
+function getDriveClient(fallbackAccessToken?: string): ReturnType<typeof google.drive> {
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    return buildServiceAccountClient()
+  }
+  if (fallbackAccessToken) {
+    return buildUserOAuthClient(fallbackAccessToken)
+  }
+  throw new Error(
+    "Drive credentials not configured. " +
+      "Set GOOGLE_SERVICE_ACCOUNT_JSON (recommended) or ensure the session access token is available. " +
+      "See README for service account setup."
+  )
+}
+
+// ─── Retry helper ─────────────────────────────────────────────────────────────
+
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
 async function withRetry<T>(
@@ -57,7 +76,6 @@ async function withRetry<T>(
     } catch (err) {
       lastErr = err
       if (!isRetryable(err) || attempt === maxAttempts) break
-      // Exponential backoff + small jitter
       const delay = baseDelayMs * 2 ** (attempt - 1) + Math.random() * 300
       await new Promise((r) => setTimeout(r, delay))
     }
@@ -79,17 +97,19 @@ function isRetryable(err: unknown): boolean {
   return false
 }
 
-// ─── Public Drive helpers ────────────────────────────────────────────────────
+// ─── Public helpers ───────────────────────────────────────────────────────────
+// Each function accepts an optional `accessToken` used as fallback when
+// GOOGLE_SERVICE_ACCOUNT_JSON is not set (e.g. during initial local dev).
 
-export async function createDriveFolder(name: string, parentId: string): Promise<string> {
-  const drive = getServiceAccountDriveClient()
+export async function createDriveFolder(
+  name: string,
+  parentId: string,
+  accessToken?: string
+): Promise<string> {
+  const drive = getDriveClient(accessToken)
   const res = await withRetry(() =>
     drive.files.create({
-      requestBody: {
-        name,
-        mimeType: "application/vnd.google-apps.folder",
-        parents: [parentId],
-      },
+      requestBody: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
       fields: "id",
     })
   )
@@ -101,9 +121,10 @@ export async function uploadFileToDrive(
   fileName: string,
   mimeType: string,
   buffer: Buffer,
-  folderId: string
+  folderId: string,
+  accessToken?: string
 ): Promise<{ fileId: string; webViewLink: string }> {
-  const drive = getServiceAccountDriveClient()
+  const drive = getDriveClient(accessToken)
   const res = await withRetry(() =>
     drive.files.create({
       requestBody: { name: fileName, parents: [folderId] },
@@ -117,15 +138,19 @@ export async function uploadFileToDrive(
   return { fileId: res.data.id, webViewLink: res.data.webViewLink }
 }
 
-export async function deleteFileFromDrive(fileId: string): Promise<void> {
-  const drive = getServiceAccountDriveClient()
+export async function deleteFileFromDrive(
+  fileId: string,
+  accessToken?: string
+): Promise<void> {
+  const drive = getDriveClient(accessToken)
   await withRetry(() => drive.files.delete({ fileId }))
 }
 
 export async function listDriveFolders(
-  parentId: string
+  parentId: string,
+  accessToken?: string
 ): Promise<Array<{ id: string; name: string }>> {
-  const drive = getServiceAccountDriveClient()
+  const drive = getDriveClient(accessToken)
   const res = await withRetry(() =>
     drive.files.list({
       q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,

@@ -132,6 +132,9 @@ export async function POST(request: Request) {
   const parentName = parentField?.name ?? null
   const driveFolderPath = parentName ? `${parentName} / ${field.name}` : field.name
 
+  // Fallback token used when GOOGLE_SERVICE_ACCOUNT_JSON is not set
+  const fallbackToken = session.accessToken
+
   // Ensure field has a Drive folder; create it (and parent folder) if missing
   let driveFolderId = field.drive_folder_id
   if (!driveFolderId) {
@@ -139,7 +142,7 @@ export async function POST(request: Request) {
 
     if (field.parent_id && parentField) {
       if (!parentField.drive_folder_id) {
-        const newParentId = await createDriveFolder(parentName ?? field.name, process.env.DRIVE_ROOT_FOLDER_ID!)
+        const newParentId = await createDriveFolder(parentName ?? field.name, process.env.DRIVE_ROOT_FOLDER_ID!, fallbackToken)
         await supabase.from("fields").update({ drive_folder_id: newParentId }).eq("id", field.parent_id)
         driveParentId = newParentId
       } else {
@@ -148,7 +151,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      driveFolderId = await createDriveFolder(field.name, driveParentId)
+      driveFolderId = await createDriveFolder(field.name, driveParentId, fallbackToken)
       await supabase.from("fields").update({ drive_folder_id: driveFolderId }).eq("id", field_id)
     } catch (err) {
       console.error("Drive folder creation failed:", err)
@@ -156,7 +159,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // Upload PDF to Drive (service account handles auth + retry)
+  // Upload PDF to Drive
   let driveFileId: string
   let driveWebLink: string
   try {
@@ -165,7 +168,8 @@ export async function POST(request: Request) {
       file.name || `${title}.pdf`,
       file.type || "application/pdf",
       buffer,
-      driveFolderId
+      driveFolderId,
+      fallbackToken
     )
     driveFileId = result.fileId
     driveWebLink = result.webViewLink

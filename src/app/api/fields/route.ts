@@ -61,10 +61,11 @@ export async function POST(request: Request) {
     }
   }
 
-  // Create Drive folder (service account)
+  // Create Drive folder (service account preferred; user token as fallback)
+  const fallbackToken = session.accessToken
   let driveFolderId: string | null = null
   try {
-    driveFolderId = await createDriveFolder(name.trim(), driveParentId)
+    driveFolderId = await createDriveFolder(name.trim(), driveParentId, fallbackToken)
   } catch (err) {
     console.error("Drive folder creation failed:", err)
     return NextResponse.json({ error: "Drive klasörü oluşturulamadı" }, { status: 500 })

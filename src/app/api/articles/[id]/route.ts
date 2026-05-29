@@ -57,11 +57,13 @@ export async function DELETE(
     return NextResponse.json({ error: "Bu makaleyi silme yetkiniz yok" }, { status: 403 })
   }
 
-  // ── 3. Delete PDF from Drive (service account; retries built-in) ───────────
+  // ── 3. Delete PDF from Drive ───────────────────────────────────────────────
+  // Service account preferred; falls back to the session's OAuth token.
+  const fallbackToken = session.accessToken
   let driveDeleted = true
   if (article.drive_file_id) {
     try {
-      await deleteFileFromDrive(article.drive_file_id)
+      await deleteFileFromDrive(article.drive_file_id, fallbackToken)
     } catch (err) {
       console.error("Drive file deletion failed:", err)
       driveDeleted = false

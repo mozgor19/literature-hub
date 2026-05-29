@@ -186,11 +186,16 @@ export async function lookupByTitle(title: string): Promise<LookupResult | null>
 // ─── arXiv ────────────────────────────────────────────────────────────────────
 
 function parseArxivXml(xml: string): LookupResult | null {
-  // Check if there's actually an entry (not an error response)
-  if (!xml.includes("<entry>")) return null
+  // The Atom feed has a feed-level <title> (the query string) and per-paper
+  // <title> inside each <entry>.  Always scope to the first <entry> block
+  // to avoid picking up the feed title.
+  const entryMatch = xml.match(/<entry[^>]*>([\s\S]*?)<\/entry>/)
+  if (!entryMatch) return null
+  const entry = entryMatch[1]
 
+  // Helper: extract a tag's text content from within the entry block
   const get = (tag: string) =>
-    xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1]
+    entry.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1]
       ?.replace(/<[^>]+>/g, "")
       .replace(/\s+/g, " ")
       .trim() ?? null
@@ -198,15 +203,21 @@ function parseArxivXml(xml: string): LookupResult | null {
   const title = get("title")
   const summary = get("summary")
   const published = get("published")
-  const year = published ? (() => { const y = Number(published.slice(0, 4)); return y >= 1900 ? y : null })() : null
+  const year = published
+    ? (() => { const y = Number(published.slice(0, 4)); return y >= 1900 ? y : null })()
+    : null
 
-  const authorMatches = [...xml.matchAll(/<author[^>]*>[\s\S]*?<name>([\s\S]+?)<\/name>[\s\S]*?<\/author>/g)]
+  // Authors live in <author><name>…</name></author> inside the entry
+  const authorMatches = [...entry.matchAll(/<author[^>]*>[\s\S]*?<name>([\s\S]+?)<\/name>[\s\S]*?<\/author>/g)]
   const authors = authorMatches.map(m => m[1].trim()).filter(Boolean).join(", ") || null
 
   const doiRaw = get("arxiv:doi")
   const doi = doiRaw ? cleanDoi(doiRaw) : null
-  const idMatch = xml.match(/<id>(https?:\/\/arxiv\.org\/abs\/[^<v]+)/)
-  const sourceUrl = idMatch?.[1] ?? (doi ? `https://doi.org/${doi}` : null)
+
+  // Prefer the abs link; fall back to the <id> element (also an abs URL)
+  const linkMatch = entry.match(/href="(https?:\/\/arxiv\.org\/abs\/[^"v]+)/)
+  const idMatch = entry.match(/<id>(https?:\/\/arxiv\.org\/abs\/[^<v]+)/)
+  const sourceUrl = linkMatch?.[1] ?? idMatch?.[1] ?? (doi ? `https://doi.org/${doi}` : null)
 
   if (!title && !authors) return null
 
