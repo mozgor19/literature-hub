@@ -16,7 +16,6 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { AddToProjectDialog } from "@/components/projects/AddToProjectDialog"
-import { isAdmin } from "@/lib/permissions"
 import { formatYear, truncate } from "@/lib/utils"
 import type { ArticleWithRelations } from "@/types/database"
 
@@ -133,7 +132,7 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                 : "—"
               const addedBy = article.added_by_user as { name: string | null; email: string } | null
               const canDeleteArticle =
-                isAdmin(session?.user?.email) || article.added_by === session?.user?.id
+                session?.user?.isAdmin || article.added_by === session?.user?.id
 
               return (
                 <TableRow key={article.id}>

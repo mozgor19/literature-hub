@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { isAdmin } from "@/lib/permissions"
 import { formatDate } from "@/lib/utils"
 import type { CommentWithUser } from "@/types/database"
 
@@ -105,14 +104,14 @@ function CommentItem({
   comment,
   articleId,
   currentUserId,
-  currentUserEmail,
+  isCurrentUserAdmin,
   isReply = false,
   onMutate,
 }: {
   comment: CommentWithUser
   articleId: string
   currentUserId: string | null
-  currentUserEmail: string | null
+  isCurrentUserAdmin: boolean
   isReply?: boolean
   onMutate: () => void
 }) {
@@ -123,7 +122,7 @@ function CommentItem({
   const canEdit = !comment.is_deleted && comment.user_id === currentUserId
   const canDelete =
     !comment.is_deleted &&
-    (isAdmin(currentUserEmail) || comment.user_id === currentUserId)
+    (isCurrentUserAdmin || comment.user_id === currentUserId)
 
   const handleEdit = async (newBody: string) => {
     const res = await fetch(`/api/comments/${comment.id}`, {
@@ -273,7 +272,7 @@ function CommentItem({
               comment={reply}
               articleId={articleId}
               currentUserId={currentUserId}
-              currentUserEmail={currentUserEmail}
+              isCurrentUserAdmin={isCurrentUserAdmin}
               isReply
               onMutate={onMutate}
             />
@@ -289,11 +288,11 @@ function CommentItem({
 export function CommentSection({
   articleId,
   currentUserId,
-  currentUserEmail,
+  isCurrentUserAdmin,
 }: {
   articleId: string
   currentUserId: string | null
-  currentUserEmail: string | null
+  isCurrentUserAdmin: boolean
 }) {
   const queryClient = useQueryClient()
   const [sortAsc, setSortAsc] = useState(true) // oldest first
@@ -373,7 +372,7 @@ export function CommentSection({
                 comment={comment}
                 articleId={articleId}
                 currentUserId={currentUserId}
-                currentUserEmail={currentUserEmail}
+                isCurrentUserAdmin={isCurrentUserAdmin}
                 onMutate={refetch}
               />
               <Separator className="mt-4" />

@@ -105,6 +105,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         token.dbUserId = dbUser.id
+        token.isAdmin = isAdminUser
         return token
       }
 
@@ -124,6 +125,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       session.accessToken = token.accessToken ?? undefined
       session.user.id = token.dbUserId ?? token.sub!
+      session.user.isAdmin = token.isAdmin ?? false
       session.error = token.error
       return session
     },

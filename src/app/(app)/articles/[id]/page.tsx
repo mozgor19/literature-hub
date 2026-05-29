@@ -132,7 +132,7 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
         <CommentSection
           articleId={article.id}
           currentUserId={session?.user.id ?? null}
-          currentUserEmail={session?.user.email ?? null}
+          isCurrentUserAdmin={session?.user.isAdmin ?? false}
         />
       </Suspense>
     </div>

@@ -10,6 +10,7 @@ declare module "next-auth" {
       name?: string | null
       email?: string | null
       image?: string | null
+      isAdmin: boolean
     }
   }
 }
@@ -20,6 +21,7 @@ declare module "next-auth/jwt" {
     refreshToken?: string
     expiresAt?: number
     dbUserId?: string
+    isAdmin?: boolean
     error?: string
   }
 }
