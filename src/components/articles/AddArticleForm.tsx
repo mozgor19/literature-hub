@@ -20,6 +20,8 @@ interface SelectedTag {
   name: string
 }
 
+const NO_SUBFIELD_VALUE = "__none__"
+
 export function AddArticleForm() {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
@@ -121,12 +123,26 @@ export function AddArticleForm() {
 
     try {
       const res = await fetch("/api/articles", { method: "POST", body: formData })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Makale eklenemedi")
+      const raw = await res.text()
+      let data: { error?: string } | null = null
+
+      if (raw) {
+        try {
+          data = JSON.parse(raw) as { error?: string }
+        } catch {
+          throw new Error("Sunucu geçerli bir JSON cevabı dönmedi")
+        }
+      }
+
+      if (!res.ok) throw new Error(data?.error ?? "Makale eklenemedi")
       toast.success("Makale başarıyla eklendi")
       router.push("/")
     } catch (err) {
-      toast.error(String(err))
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Makale eklenirken beklenmeyen bir hata oluştu"
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }
@@ -261,13 +277,15 @@ export function AddArticleForm() {
                 <div className="flex gap-2">
                   <Select
                     value={selectedSubFieldId}
-                    onValueChange={setSelectedSubFieldId}
+                    onValueChange={(value) =>
+                      setSelectedSubFieldId(value === NO_SUBFIELD_VALUE ? "" : value)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Alt alan seçin..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">—</SelectItem>
+                      <SelectItem value={NO_SUBFIELD_VALUE}>—</SelectItem>
                       {subfields.map((f) => (
                         <SelectItem key={f.id} value={f.id}>
                           {f.name}
