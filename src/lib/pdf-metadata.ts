@@ -6,6 +6,9 @@ interface ExtractedPdfMetadata {
   year: number | null
   abstract: string | null
   tags: string[]
+  sourceUrl: string | null
+  doi: string | null
+  strategy: "crossref" | "heuristic"
 }
 
 const STOPWORDS = new Set([
@@ -110,6 +113,100 @@ function uniqueTags(tags: string[]): string[] {
   return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))]
 }
 
+function stripHtml(text: string): string {
+  return text.replace(/<[^>]+>/g, " ").replace(/&[^;\s]+;/g, " ").replace(/\s+/g, " ").trim()
+}
+
+function extractDoi(text: string): string | null {
+  const doiMatch = text.match(/\b10\.\d{4,9}\/[-._;()/:A-Z0-9]+\b/i)
+  if (!doiMatch) return null
+
+  return doiMatch[0].replace(/[)>.,;]+$/, "")
+}
+
+interface CrossrefAuthor {
+  given?: string
+  family?: string
+  name?: string
+}
+
+interface CrossrefMessage {
+  DOI?: string
+  title?: string[]
+  author?: CrossrefAuthor[]
+  abstract?: string
+  subject?: string[]
+  URL?: string
+  issued?: { "date-parts"?: number[][] }
+  published?: { "date-parts"?: number[][] }
+  published_print?: { "date-parts"?: number[][] }
+  published_online?: { "date-parts"?: number[][] }
+}
+
+function formatCrossrefAuthors(authors: CrossrefAuthor[] | undefined): string | null {
+  if (!authors || authors.length === 0) return null
+
+  const names = authors
+    .map((author) => {
+      if (author.name?.trim()) return author.name.trim()
+
+      const parts = [author.given?.trim(), author.family?.trim()].filter(Boolean)
+      return parts.join(" ").trim()
+    })
+    .filter(Boolean)
+
+  return names.length > 0 ? names.join(", ") : null
+}
+
+function extractCrossrefYear(message: CrossrefMessage): number | null {
+  const candidates = [
+    message.issued?.["date-parts"]?.[0]?.[0],
+    message.published?.["date-parts"]?.[0]?.[0],
+    message.published_print?.["date-parts"]?.[0]?.[0],
+    message.published_online?.["date-parts"]?.[0]?.[0],
+  ]
+
+  const year = candidates.find((candidate) => typeof candidate === "number")
+  return typeof year === "number" ? year : null
+}
+
+async function fetchCrossrefMetadata(doi: string): Promise<Partial<ExtractedPdfMetadata> | null> {
+  try {
+    const res = await fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    })
+
+    if (!res.ok) return null
+
+    const payload = await res.json() as { message?: CrossrefMessage }
+    const message = payload.message
+    if (!message) return null
+
+    const title = message.title?.[0]?.trim() || null
+    const authors = formatCrossrefAuthors(message.author)
+    const abstract = message.abstract ? stripHtml(message.abstract).slice(0, 3000) : null
+    const tags = uniqueTags((message.subject ?? []).slice(0, 6))
+    const sourceUrl = message.URL?.trim() || `https://doi.org/${doi}`
+    const year = extractCrossrefYear(message)
+
+    return {
+      title,
+      authors,
+      year,
+      abstract,
+      tags,
+      sourceUrl,
+      doi: message.DOI?.trim() || doi,
+      strategy: "crossref",
+    }
+  } catch {
+    return null
+  }
+}
+
 function deriveTags(title: string | null, abstract: string | null, text: string): string[] {
   const keywordMatch = text.match(/keywords?[\s:.-]+([^\n]+)/i)
   if (keywordMatch?.[1]) {
@@ -137,14 +234,13 @@ function deriveTags(title: string | null, abstract: string | null, text: string)
     .map(([word]) => word)
 }
 
-export async function extractPdfMetadata(buffer: Buffer): Promise<ExtractedPdfMetadata> {
-  const parser = new PDFParse({ data: buffer })
+export async function extractPdfMetadata(data: Uint8Array): Promise<ExtractedPdfMetadata> {
+  // Use a plain Uint8Array copy so pdf.js worker messaging can structured-clone it safely.
+  const parser = new PDFParse({ data: new Uint8Array(data) })
 
   try {
-    const [infoResult, textResult] = await Promise.all([
-      parser.getInfo(),
-      parser.getText({ first: 3 }),
-    ])
+    const infoResult = await parser.getInfo()
+    const textResult = await parser.getText({ first: 3 })
 
     const text = normalizeWhitespace(textResult.text)
     const lines = text
@@ -157,10 +253,35 @@ export async function extractPdfMetadata(buffer: Buffer): Promise<ExtractedPdfMe
     const abstract = extractAbstract(text)
     const year = extractYear(text, infoResult.info?.CreationDate ?? null)
     const tags = deriveTags(title, abstract, text)
+    const doi = extractDoi(text)
 
-    return { title, authors, year, abstract, tags }
+    if (doi) {
+      const crossrefMetadata = await fetchCrossrefMetadata(doi)
+      if (crossrefMetadata) {
+        return {
+          title: crossrefMetadata.title ?? title,
+          authors: crossrefMetadata.authors ?? authors,
+          year: crossrefMetadata.year ?? year,
+          abstract: crossrefMetadata.abstract ?? abstract,
+          tags: crossrefMetadata.tags?.length ? crossrefMetadata.tags : tags,
+          sourceUrl: crossrefMetadata.sourceUrl ?? `https://doi.org/${doi}`,
+          doi: crossrefMetadata.doi ?? doi,
+          strategy: "crossref",
+        }
+      }
+    }
+
+    return {
+      title,
+      authors,
+      year,
+      abstract,
+      tags,
+      sourceUrl: doi ? `https://doi.org/${doi}` : null,
+      doi,
+      strategy: "heuristic",
+    }
   } finally {
     await parser.destroy()
   }
 }
-

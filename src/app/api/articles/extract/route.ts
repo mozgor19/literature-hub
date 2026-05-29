@@ -16,8 +16,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const metadata = await extractPdfMetadata(buffer)
+    const arrayBuffer = await file.arrayBuffer()
+    const metadata = await extractPdfMetadata(new Uint8Array(arrayBuffer))
     return NextResponse.json(metadata)
   } catch (error) {
     console.error("PDF metadata extraction failed:", error)
@@ -27,4 +27,3 @@ export async function POST(request: Request) {
     )
   }
 }
-

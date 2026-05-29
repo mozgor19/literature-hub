@@ -26,6 +26,9 @@ interface ExtractedMetadata {
   year: number | null
   abstract: string | null
   tags: string[]
+  sourceUrl?: string | null
+  doi?: string | null
+  strategy?: "crossref" | "heuristic"
 }
 
 const NO_SUBFIELD_VALUE = "__none__"
@@ -73,6 +76,7 @@ export function AddArticleForm() {
     if (metadata.authors && !authors.trim()) setAuthors(metadata.authors)
     if (metadata.year && !year) setYear(String(metadata.year))
     if (metadata.abstract && !abstract.trim()) setAbstract(metadata.abstract)
+    if (metadata.sourceUrl && !sourceUrl.trim()) setSourceUrl(metadata.sourceUrl)
 
     if (metadata.tags.length > 0) {
       setTags((current) => {
@@ -94,7 +98,9 @@ export function AddArticleForm() {
 
     if (populated.length > 0) {
       setExtractionSummary(
-        `PDF içeriğinden ${populated.join(", ")} için öneriler getirildi. Lütfen doğruluğunu kontrol edin.`
+        metadata.strategy === "crossref"
+          ? `PDF içinden DOI bulundu ve Crossref üzerinden ${populated.join(", ")} için öneriler getirildi. Lütfen doğruluğunu kontrol edin.`
+          : `PDF içeriğinden ${populated.join(", ")} için öneriler getirildi. Lütfen doğruluğunu kontrol edin.`
       )
     } else {
       setExtractionSummary("PDF yüklendi, ancak otomatik doldurulabilecek güçlü bir metadata bulunamadı.")
@@ -121,7 +127,17 @@ export function AddArticleForm() {
 
       const res = await fetch("/api/articles/extract", { method: "POST", body: formData })
       const raw = await res.text()
-      const data = raw ? JSON.parse(raw) as ExtractedMetadata & { error?: string } : null
+
+      let data: (ExtractedMetadata & { error?: string }) | null = null
+      if (raw) {
+        const contentType = res.headers.get("content-type") ?? ""
+
+        if (contentType.includes("application/json")) {
+          data = JSON.parse(raw) as ExtractedMetadata & { error?: string }
+        } else {
+          throw new Error("PDF analizi servisi beklenmeyen bir cevap döndü")
+        }
+      }
 
       if (!res.ok) {
         throw new Error(data?.error ?? "PDF analizi yapılamadı")
