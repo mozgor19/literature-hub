@@ -104,7 +104,7 @@ export async function DELETE(
   if (article.field_id) {
     const { data: field } = await supabase
       .from("fields")
-      .select("id, parent_id")
+      .select("id, parent_id, drive_folder_id")
       .eq("id", article.field_id)
       .single()
 
@@ -115,6 +115,14 @@ export async function DELETE(
         .eq("field_id", field.id)
 
       if ((remaining ?? 0) === 0) {
+        // Delete Drive folder first (best-effort; don't block record cleanup)
+        if (field.drive_folder_id) {
+          try {
+            await deleteFileFromDrive(field.drive_folder_id, fallbackToken)
+          } catch (err) {
+            console.error("Sub-field Drive folder deletion failed:", err)
+          }
+        }
         await supabase.from("fields").delete().eq("id", field.id)
       }
     }
