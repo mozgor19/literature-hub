@@ -79,7 +79,7 @@ export function ArticleFilters() {
   const hasFilters = q || fieldId || tagsParam || yearMin || yearMax
 
   return (
-    <aside className="w-64 shrink-0 space-y-4">
+    <aside className="w-full md:w-64 md:shrink-0 space-y-4">
       {/* Search */}
       <div className="space-y-2">
         <Label>Arama</Label>

@@ -89,7 +89,7 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div className="flex flex-wrap gap-2 pt-1 w-full">
           <Button asChild size="sm">
             <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-3.5 w-3.5 mr-1.5" />

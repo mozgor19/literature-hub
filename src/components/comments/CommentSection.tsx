@@ -281,7 +281,7 @@ function CommentItem({
   const canEdit = !comment.is_deleted && comment.user_id === currentUserId
   const canDelete = !comment.is_deleted && (isCurrentUserAdmin || comment.user_id === currentUserId)
 
-  const indent = Math.min(depth, 4) * 20 // px, capped at 4 levels
+  const indent = Math.min(depth, 3) * 16 // px, capped at 3 levels (tighter on mobile)
 
   const handleEdit = async (newBody: string) => {
     const res = await fetch(`/api/comments/${comment.id}`, {
@@ -341,7 +341,7 @@ function CommentItem({
       </div>
 
       {/* Body */}
-      <div className="mt-1 ml-8">
+      <div className="mt-1 ml-6 sm:ml-8">
         {comment.is_deleted ? (
           <p className="text-sm text-muted-foreground italic">[silindi]</p>
         ) : editing ? (

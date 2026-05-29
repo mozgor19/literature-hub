@@ -130,7 +130,7 @@ export function ProjectDetail({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Articles table */}
+      {/* Articles */}
       {project.articles.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-2 rounded-xl border">
           <p className="font-medium">Bu projede henüz makale yok</p>
@@ -140,73 +140,97 @@ export function ProjectDetail({ id }: { id: string }) {
           </Button>
         </div>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[38%]">Başlık / Yazarlar</TableHead>
-                <TableHead className="w-[8%]">Yıl</TableHead>
-                <TableHead className="w-[16%]">Alan</TableHead>
-                <TableHead className="w-[20%]">Etiketler</TableHead>
-                <TableHead className="w-[12%] text-right">İşlemler</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {project.articles.map((article) => (
-                <TableRow key={article.id}>
-                  <TableCell>
-                    <div className="space-y-0.5">
-                      <p className="font-medium text-sm leading-snug">{article.title}</p>
-                      <p className="text-xs text-muted-foreground">{truncate(article.authors, 60)}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{formatYear(article.year)}</TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">{article.drive_folder_path}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {article.tags.slice(0, 3).map((tag) => (
-                        <Badge key={tag.id} variant="secondary" className="text-xs px-1.5 py-0">
-                          {tag.name}
-                        </Badge>
-                      ))}
-                      {article.tags.length > 3 && (
-                        <Badge variant="outline" className="text-xs px-1.5 py-0">
-                          +{article.tags.length - 3}
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <CopyBtn text={article.drive_web_link} />
-                      <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
-                        <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Projeden çıkar"
-                        onClick={() => removeArticle(article.id, article.title)}
-                        disabled={removing === article.id}
-                      >
-                        {removing === article.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <X className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  </TableCell>
+        <>
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-2">
+            {project.articles.map((article) => (
+              <div key={article.id} className="rounded-lg border bg-card p-3 space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-sm leading-snug flex-1">{article.title}</p>
+                  <span className="text-xs text-muted-foreground shrink-0">{formatYear(article.year)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{truncate(article.authors, 60)}</p>
+                <p className="text-xs text-muted-foreground">{article.drive_folder_path}</p>
+                {article.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {article.tags.slice(0, 4).map((tag) => (
+                      <Badge key={tag.id} variant="secondary" className="text-xs px-1.5 py-0">{tag.name}</Badge>
+                    ))}
+                    {article.tags.length > 4 && (
+                      <Badge variant="outline" className="text-xs px-1.5 py-0">+{article.tags.length - 4}</Badge>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-1 pt-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
+                    <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </Button>
+                  <Button variant="ghost" size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Projeden çıkar"
+                    onClick={() => removeArticle(article.id, article.title)} disabled={removing === article.id}>
+                    {removing === article.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[38%]">Başlık / Yazarlar</TableHead>
+                  <TableHead className="w-[8%]">Yıl</TableHead>
+                  <TableHead className="w-[16%]">Alan</TableHead>
+                  <TableHead className="w-[20%]">Etiketler</TableHead>
+                  <TableHead className="w-[12%] text-right">İşlemler</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {project.articles.map((article) => (
+                  <TableRow key={article.id}>
+                    <TableCell>
+                      <div className="space-y-0.5">
+                        <p className="font-medium text-sm leading-snug">{article.title}</p>
+                        <p className="text-xs text-muted-foreground">{truncate(article.authors, 60)}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{formatYear(article.year)}</TableCell>
+                    <TableCell><span className="text-xs text-muted-foreground">{article.drive_folder_path}</span></TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {article.tags.slice(0, 3).map((tag) => (
+                          <Badge key={tag.id} variant="secondary" className="text-xs px-1.5 py-0">{tag.name}</Badge>
+                        ))}
+                        {article.tags.length > 3 && (
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">+{article.tags.length - 3}</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        <CopyBtn text={article.drive_web_link} />
+                        <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
+                          <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                        <Button variant="ghost" size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Projeden çıkar"
+                          onClick={() => removeArticle(article.id, article.title)} disabled={removing === article.id}>
+                          {removing === article.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
       <DeleteProjectDialog

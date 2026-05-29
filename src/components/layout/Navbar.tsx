@@ -25,36 +25,39 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
+      <div className="container mx-auto flex h-14 max-w-7xl items-center gap-2 px-4">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 font-semibold">
+        <Link href="/" className="flex items-center gap-2 font-semibold shrink-0">
           <BookOpen className="h-5 w-5 text-primary" />
           <span className="hidden sm:inline">Literature Hub</span>
         </Link>
 
         {/* Nav links */}
-        <nav className="flex items-center gap-1 ml-4">
+        <nav className="flex items-center gap-0.5 ml-2">
           {navLinks.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+                "flex items-center gap-1.5 rounded-md px-2 sm:px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
                 pathname === href
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground"
               )}
             >
-              <Icon className="h-4 w-4" />
-              {label}
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline">{label}</span>
             </Link>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           {/* Add article button */}
           <Button asChild size="sm">
-            <Link href="/articles/new">+ Makale Ekle</Link>
+            <Link href="/articles/new">
+              <span className="sm:hidden">+</span>
+              <span className="hidden sm:inline">+ Makale Ekle</span>
+            </Link>
           </Button>
 
           {/* Notification bell */}

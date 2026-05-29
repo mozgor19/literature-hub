@@ -110,7 +110,66 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
         {total} makaleden {(page - 1) * limit + 1}–{Math.min(page * limit, total)} arası gösteriliyor
       </div>
 
-      <div className="rounded-md border">
+      {/* ── Mobile card list (< md) ── */}
+      <div className="md:hidden space-y-2">
+        {articles.map((article) => {
+          const field = article.field as { name: string; parent?: { name: string } | null } | null
+          const fieldPath = field ? (field.parent ? `${field.parent.name} / ${field.name}` : field.name) : "—"
+          const canDeleteArticle = session?.user?.isAdmin || article.added_by === session?.user?.id
+          return (
+            <div key={article.id} className="rounded-lg border bg-card p-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <Link href={`/articles/${article.id}`} className="font-medium text-sm leading-snug hover:underline flex-1">
+                  {article.title}
+                </Link>
+                <span className="text-xs text-muted-foreground shrink-0">{formatYear(article.year)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{truncate(article.authors, 60)}</p>
+              <p className="text-xs text-muted-foreground">{fieldPath}</p>
+              {(article.tags ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {(article.tags ?? []).slice(0, 4).map((tag) => (
+                    <Badge key={(tag as { id: string }).id} variant="secondary" className="text-xs px-1.5 py-0">
+                      {(tag as { name: string }).name}
+                    </Badge>
+                  ))}
+                  {(article.tags ?? []).length > 4 && (
+                    <Badge variant="outline" className="text-xs px-1.5 py-0">+{(article.tags ?? []).length - 4}</Badge>
+                  )}
+                </div>
+              )}
+              <div className="flex items-center gap-1 pt-1">
+                {article.comment_count > 0 && (
+                  <Badge variant="outline" className="text-xs px-1.5 h-6 gap-1">
+                    <MessageSquare className="h-3 w-3" />{article.comment_count}
+                  </Badge>
+                )}
+                <div className="ml-auto flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Projeye ekle"
+                    onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
+                    <FolderPlus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
+                    <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </Button>
+                  {canDeleteArticle && (
+                    <Button variant="ghost" size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Makaleyi sil"
+                      onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Desktop table (≥ md) ── */}
+      <div className="hidden md:block rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -138,24 +197,14 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                 <TableRow key={article.id}>
                   <TableCell>
                     <div className="space-y-0.5">
-                      <Link
-                        href={`/articles/${article.id}`}
-                        className="font-medium text-sm leading-snug hover:underline"
-                      >
+                      <Link href={`/articles/${article.id}`} className="font-medium text-sm leading-snug hover:underline">
                         {article.title}
                       </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {truncate(article.authors, 60)}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{truncate(article.authors, 60)}</p>
                     </div>
                   </TableCell>
-
                   <TableCell className="text-sm">{formatYear(article.year)}</TableCell>
-
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">{fieldPath}</span>
-                  </TableCell>
-
+                  <TableCell><span className="text-xs text-muted-foreground">{fieldPath}</span></TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {(article.tags ?? []).slice(0, 3).map((tag) => (
@@ -164,39 +213,25 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                         </Badge>
                       ))}
                       {(article.tags ?? []).length > 3 && (
-                        <Badge variant="outline" className="text-xs px-1.5 py-0">
-                          +{(article.tags ?? []).length - 3}
-                        </Badge>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">+{(article.tags ?? []).length - 3}</Badge>
                       )}
                     </div>
                   </TableCell>
-
                   <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {addedBy?.name ?? addedBy?.email ?? "—"}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{addedBy?.name ?? addedBy?.email ?? "—"}</span>
                   </TableCell>
-
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       {article.comment_count > 0 && (
                         <Badge variant="outline" className="text-xs px-1.5 h-6 gap-1">
-                          <MessageSquare className="h-3 w-3" />
-                          {article.comment_count}
+                          <MessageSquare className="h-3 w-3" />{article.comment_count}
                         </Badge>
                       )}
                       {article.project_count > 0 && (
-                        <Badge variant="outline" className="text-xs px-1.5 h-6">
-                          {article.project_count}P
-                        </Badge>
+                        <Badge variant="outline" className="text-xs px-1.5 h-6">{article.project_count}P</Badge>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        title="Projeye ekle"
-                        onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}
-                      >
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Projeye ekle"
+                        onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
                         <FolderPlus className="h-3.5 w-3.5" />
                       </Button>
                       <CopyButton text={article.drive_web_link} />
@@ -206,13 +241,9 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                         </a>
                       </Button>
                       {canDeleteArticle && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          title="Makaleyi sil"
-                          onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}
-                        >
+                        <Button variant="ghost" size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Makaleyi sil"
+                          onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
