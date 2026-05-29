@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useQueryClient } from "@tanstack/react-query"
-import { ExternalLink, Copy, FolderPlus, Check, Trash2, AlertTriangle, Loader2 } from "lucide-react"
+import { ExternalLink, Copy, FolderPlus, Check, Trash2, AlertTriangle, Loader2, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -139,9 +139,12 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                 <TableRow key={article.id}>
                   <TableCell>
                     <div className="space-y-0.5">
-                      <p className="font-medium text-sm leading-snug">
+                      <Link
+                        href={`/articles/${article.id}`}
+                        className="font-medium text-sm leading-snug hover:underline"
+                      >
                         {article.title}
-                      </p>
+                      </Link>
                       <p className="text-xs text-muted-foreground">
                         {truncate(article.authors, 60)}
                       </p>
@@ -177,6 +180,12 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
 
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
+                      {article.comment_count > 0 && (
+                        <Badge variant="outline" className="text-xs px-1.5 h-6 gap-1">
+                          <MessageSquare className="h-3 w-3" />
+                          {article.comment_count}
+                        </Badge>
+                      )}
                       {article.project_count > 0 && (
                         <Badge variant="outline" className="text-xs px-1.5 h-6">
                           {article.project_count}P

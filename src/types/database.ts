@@ -60,6 +60,16 @@ export type Database = {
           { foreignKeyName: "project_articles_added_by_fkey"; columns: ["added_by"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
         ]
       }
+      comments: {
+        Row: { id: string; article_id: string; user_id: string; parent_id: string | null; body: string; created_at: string; updated_at: string; is_edited: boolean; is_deleted: boolean }
+        Insert: { id?: string; article_id: string; user_id: string; parent_id?: string | null; body: string; created_at?: string; updated_at?: string; is_edited?: boolean; is_deleted?: boolean }
+        Update: { id?: string; article_id?: string; user_id?: string; parent_id?: string | null; body?: string; created_at?: string; updated_at?: string; is_edited?: boolean; is_deleted?: boolean }
+        Relationships: [
+          { foreignKeyName: "comments_article_id_fkey"; columns: ["article_id"]; isOneToOne: false; referencedRelation: "articles"; referencedColumns: ["id"] },
+          { foreignKeyName: "comments_user_id_fkey"; columns: ["user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] },
+          { foreignKeyName: "comments_parent_id_fkey"; columns: ["parent_id"]; isOneToOne: false; referencedRelation: "comments"; referencedColumns: ["id"] }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -76,11 +86,19 @@ export type DBArticle = Database["public"]["Tables"]["articles"]["Row"]
 export type DBProject = Database["public"]["Tables"]["projects"]["Row"]
 export type DBProjectArticle = Database["public"]["Tables"]["project_articles"]["Row"]
 
+export type DBComment = Database["public"]["Tables"]["comments"]["Row"]
+
 export interface ArticleWithRelations extends DBArticle {
   tags: DBTag[]
   field: (DBField & { parent?: DBField | null }) | null
   added_by_user: Pick<DBUser, "id" | "name" | "email"> | null
   project_count: number
+  comment_count: number
+}
+
+export interface CommentWithUser extends DBComment {
+  user: Pick<DBUser, "id" | "name" | "email" | "image">
+  replies?: CommentWithUser[]
 }
 
 export interface FieldWithChildren extends DBField {

@@ -64,16 +64,20 @@ export async function GET(request: Request) {
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Fetch project counts in parallel with the article list result
+  // Fetch project counts and comment counts in parallel
   const articleIds = (data ?? []).map((a) => a.id)
   const projectCountMap: Record<string, number> = {}
+  const commentCountMap: Record<string, number> = {}
   if (articleIds.length > 0) {
-    const { data: pcData } = await supabase
-      .from("project_articles")
-      .select("article_id")
-      .in("article_id", articleIds)
-    ;(pcData ?? []).forEach((row) => {
+    const [pcResult, ccResult] = await Promise.all([
+      supabase.from("project_articles").select("article_id").in("article_id", articleIds),
+      supabase.from("comments").select("article_id").in("article_id", articleIds).eq("is_deleted", false),
+    ])
+    ;(pcResult.data ?? []).forEach((row) => {
       projectCountMap[row.article_id] = (projectCountMap[row.article_id] ?? 0) + 1
+    })
+    ;(ccResult.data ?? []).forEach((row) => {
+      commentCountMap[row.article_id] = (commentCountMap[row.article_id] ?? 0) + 1
     })
   }
 
@@ -81,6 +85,7 @@ export async function GET(request: Request) {
     ...a,
     tags: (a.article_tags ?? []).map((at: { tags: unknown }) => at.tags).filter(Boolean),
     project_count: projectCountMap[a.id] ?? 0,
+    comment_count: commentCountMap[a.id] ?? 0,
   }))
 
   return NextResponse.json({ articles, total: count ?? 0, page, limit })

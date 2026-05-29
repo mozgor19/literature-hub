@@ -51,10 +51,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          // Only basic (non-sensitive) scopes — Drive is handled by a service
-          // account key (GOOGLE_SERVICE_ACCOUNT_JSON), so we no longer need the
-          // user's Drive token. This eliminates the "unverified app" warning.
-          scope: "openid email profile",
+          // drive.file = only files the app creates/opens; minimal Drive scope.
+          // Required as fallback when GOOGLE_SERVICE_ACCOUNT_JSON is not set.
+          // If the service account is configured it handles Drive for everyone
+          // and this token is never used for Drive ops.
+          scope: "openid email profile https://www.googleapis.com/auth/drive.file",
           access_type: "offline",
           prompt: "consent",
         },

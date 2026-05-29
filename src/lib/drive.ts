@@ -42,21 +42,26 @@ function buildUserOAuthClient(accessToken: string): ReturnType<typeof google.dri
  *
  * Priority:
  *   1. Service account  (GOOGLE_SERVICE_ACCOUNT_JSON)  — preferred; shared access, no expiry
- *   2. User OAuth token (fallbackAccessToken)           — works while token is valid
+ *   2. User OAuth token (fallbackAccessToken)           — requires drive.file scope on sign-in
  *
  * If neither is available the function throws a clear setup error.
  */
 function getDriveClient(fallbackAccessToken?: string): ReturnType<typeof google.drive> {
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    return buildServiceAccountClient()
+    try {
+      return buildServiceAccountClient()
+    } catch (err) {
+      console.error("Service account client build failed, falling back to user token:", err)
+      if (fallbackAccessToken) return buildUserOAuthClient(fallbackAccessToken)
+      throw err
+    }
   }
   if (fallbackAccessToken) {
     return buildUserOAuthClient(fallbackAccessToken)
   }
   throw new Error(
-    "Drive credentials not configured. " +
-      "Set GOOGLE_SERVICE_ACCOUNT_JSON (recommended) or ensure the session access token is available. " +
-      "See README for service account setup."
+    "Drive erişimi yapılandırılmamış. " +
+      "GOOGLE_SERVICE_ACCOUNT_JSON ortam değişkenini ayarlayın veya yeniden giriş yapın."
   )
 }
 
