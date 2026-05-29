@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 import { deleteFileFromDrive } from "@/lib/drive"
+import { getDriveAuthForRequest } from "@/lib/google-auth"
 
 export async function GET(
   _request: Request,
@@ -29,12 +30,13 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (!session.accessToken) {
+  const driveAuth = await getDriveAuthForRequest(request, session.accessToken)
+  if (!driveAuth) {
     return NextResponse.json({ error: "Drive erişim tokeni bulunamadı" }, { status: 401 })
   }
 
@@ -51,7 +53,7 @@ export async function DELETE(
   }
 
   try {
-    await deleteFileFromDrive(session.accessToken, article.drive_file_id)
+    await deleteFileFromDrive(driveAuth, article.drive_file_id)
   } catch (error) {
     console.error("Drive file deletion failed:", error)
     return NextResponse.json(

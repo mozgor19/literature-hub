@@ -1,21 +1,25 @@
 import { google } from "googleapis"
 import { Readable } from "stream"
+import type { DriveAuthCredentials } from "@/lib/google-auth"
 
-function getDriveClient(accessToken: string) {
+function getDriveClient(credentials: DriveAuthCredentials) {
   const auth = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET
   )
-  auth.setCredentials({ access_token: accessToken })
+  auth.setCredentials({
+    access_token: credentials.accessToken,
+    refresh_token: credentials.refreshToken,
+  })
   return google.drive({ version: "v3", auth })
 }
 
 export async function createDriveFolder(
-  accessToken: string,
+  credentials: DriveAuthCredentials,
   name: string,
   parentId: string
 ): Promise<string> {
-  const drive = getDriveClient(accessToken)
+  const drive = getDriveClient(credentials)
   const res = await drive.files.create({
     requestBody: {
       name,
@@ -29,13 +33,13 @@ export async function createDriveFolder(
 }
 
 export async function uploadFileToDrive(
-  accessToken: string,
+  credentials: DriveAuthCredentials,
   fileName: string,
   mimeType: string,
   buffer: Buffer,
   folderId: string
 ): Promise<{ fileId: string; webViewLink: string }> {
-  const drive = getDriveClient(accessToken)
+  const drive = getDriveClient(credentials)
   const res = await drive.files.create({
     requestBody: {
       name: fileName,
@@ -54,18 +58,18 @@ export async function uploadFileToDrive(
 }
 
 export async function deleteFileFromDrive(
-  accessToken: string,
+  credentials: DriveAuthCredentials,
   fileId: string
 ): Promise<void> {
-  const drive = getDriveClient(accessToken)
+  const drive = getDriveClient(credentials)
   await drive.files.delete({ fileId })
 }
 
 export async function listDriveFolders(
-  accessToken: string,
+  credentials: DriveAuthCredentials,
   parentId: string
 ): Promise<Array<{ id: string; name: string }>> {
-  const drive = getDriveClient(accessToken)
+  const drive = getDriveClient(credentials)
   const res = await drive.files.list({
     q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: "files(id,name)",

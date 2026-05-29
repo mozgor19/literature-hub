@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 import { createDriveFolder } from "@/lib/drive"
+import { getDriveAuthForRequest } from "@/lib/google-auth"
 import type { FieldWithChildren } from "@/types/database"
 
 export async function GET() {
@@ -30,6 +31,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const driveAuth = await getDriveAuthForRequest(request, session.accessToken)
 
   const body = await request.json()
   const { name, parent_id } = body as { name: string; parent_id?: string | null }
@@ -54,9 +56,9 @@ export async function POST(request: Request) {
 
   // Create the Drive folder
   let driveFolderId: string | null = null
-  if (session.accessToken) {
+  if (driveAuth) {
     try {
-      driveFolderId = await createDriveFolder(session.accessToken, name.trim(), driveParentId)
+      driveFolderId = await createDriveFolder(driveAuth, name.trim(), driveParentId)
     } catch (err) {
       console.error("Drive folder creation failed:", err)
       return NextResponse.json({ error: "Drive klasörü oluşturulamadı" }, { status: 500 })

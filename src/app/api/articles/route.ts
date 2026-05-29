@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 import { uploadFileToDrive, createDriveFolder } from "@/lib/drive"
+import { getDriveAuthForRequest } from "@/lib/google-auth"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -102,6 +103,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const driveAuth = await getDriveAuthForRequest(request, session.accessToken)
 
   const formData = await request.formData()
   const file = formData.get("file") as File | null
@@ -124,7 +126,7 @@ export async function POST(request: Request) {
   if (!file) {
     return NextResponse.json({ error: "PDF dosyası zorunludur" }, { status: 400 })
   }
-  if (!session.accessToken) {
+  if (!driveAuth) {
     return NextResponse.json({ error: "Drive erişim tokeni bulunamadı" }, { status: 401 })
   }
 
@@ -162,7 +164,7 @@ export async function POST(request: Request) {
       // Create parent folder first if it also doesn't have one
       if (!parentField?.drive_folder_id) {
         const newParentFolderId = await createDriveFolder(
-          session.accessToken,
+          driveAuth,
           parentName ?? field.name,
           process.env.DRIVE_ROOT_FOLDER_ID!
         )
@@ -177,7 +179,7 @@ export async function POST(request: Request) {
     }
     try {
       driveFolderId = await createDriveFolder(
-        session.accessToken,
+        driveAuth,
         field.name,
         driveParentId
       )
@@ -197,7 +199,7 @@ export async function POST(request: Request) {
   try {
     const buffer = Buffer.from(await file.arrayBuffer())
     const result = await uploadFileToDrive(
-      session.accessToken,
+      driveAuth,
       file.name || `${title}.pdf`,
       file.type || "application/pdf",
       buffer,
