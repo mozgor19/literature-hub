@@ -70,6 +70,17 @@ export type Database = {
           { foreignKeyName: "comments_parent_id_fkey"; columns: ["parent_id"]; isOneToOne: false; referencedRelation: "comments"; referencedColumns: ["id"] }
         ]
       }
+      notifications: {
+        Row: { id: string; user_id: string; type: string; article_id: string | null; comment_id: string | null; actor_id: string | null; is_read: boolean; created_at: string }
+        Insert: { id?: string; user_id: string; type: string; article_id?: string | null; comment_id?: string | null; actor_id?: string | null; is_read?: boolean; created_at?: string }
+        Update: { id?: string; user_id?: string; type?: string; article_id?: string | null; comment_id?: string | null; actor_id?: string | null; is_read?: boolean; created_at?: string }
+        Relationships: [
+          { foreignKeyName: "notifications_user_id_fkey"; columns: ["user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] },
+          { foreignKeyName: "notifications_article_id_fkey"; columns: ["article_id"]; isOneToOne: false; referencedRelation: "articles"; referencedColumns: ["id"] },
+          { foreignKeyName: "notifications_comment_id_fkey"; columns: ["comment_id"]; isOneToOne: false; referencedRelation: "comments"; referencedColumns: ["id"] },
+          { foreignKeyName: "notifications_actor_id_fkey"; columns: ["actor_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -87,6 +98,12 @@ export type DBProject = Database["public"]["Tables"]["projects"]["Row"]
 export type DBProjectArticle = Database["public"]["Tables"]["project_articles"]["Row"]
 
 export type DBComment = Database["public"]["Tables"]["comments"]["Row"]
+export type DBNotification = Database["public"]["Tables"]["notifications"]["Row"]
+
+export interface NotificationWithDetails extends DBNotification {
+  actor: Pick<DBUser, "id" | "name" | "email" | "image"> | null
+  article: Pick<DBArticle, "id" | "title"> | null
+}
 
 export interface ArticleWithRelations extends DBArticle {
   tags: DBTag[]

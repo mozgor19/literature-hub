@@ -11,6 +11,7 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { NotificationBell } from "@/components/layout/NotificationBell"
 
 const navLinks = [
   { href: "/articles", label: "Makaleler", icon: BookText },
@@ -55,6 +56,9 @@ export function Navbar() {
           <Button asChild size="sm">
             <Link href="/articles/new">+ Makale Ekle</Link>
           </Button>
+
+          {/* Notification bell */}
+          {session?.user && <NotificationBell />}
 
           {/* User menu */}
           {session?.user && (

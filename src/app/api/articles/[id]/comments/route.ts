@@ -2,6 +2,64 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 
+async function createNotifications({
+  commentId,
+  articleId,
+  actorId,
+  parentId,
+}: {
+  commentId: string
+  articleId: string
+  actorId: string
+  parentId: string | null
+}) {
+  const inserts: Array<{
+    user_id: string
+    type: string
+    article_id: string
+    comment_id: string
+    actor_id: string
+  }> = []
+
+  if (parentId) {
+    // Reply: notify the parent comment's author (if different from replier)
+    const { data: parent } = await supabase
+      .from("comments")
+      .select("user_id")
+      .eq("id", parentId)
+      .single()
+    if (parent && parent.user_id !== actorId) {
+      inserts.push({
+        user_id: parent.user_id,
+        type: "reply_to_comment",
+        article_id: articleId,
+        comment_id: commentId,
+        actor_id: actorId,
+      })
+    }
+  } else {
+    // Top-level comment: notify the article uploader (if different from commenter)
+    const { data: article } = await supabase
+      .from("articles")
+      .select("added_by")
+      .eq("id", articleId)
+      .single()
+    if (article?.added_by && article.added_by !== actorId) {
+      inserts.push({
+        user_id: article.added_by,
+        type: "comment_on_article",
+        article_id: articleId,
+        comment_id: commentId,
+        actor_id: actorId,
+      })
+    }
+  }
+
+  if (inserts.length > 0) {
+    await supabase.from("notifications").insert(inserts)
+  }
+}
+
 type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: Params) {
@@ -63,5 +121,14 @@ export async function POST(req: Request, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // ── Fire-and-forget notifications (never block the response) ────────────────
+  void createNotifications({
+    commentId: data.id,
+    articleId: article_id,
+    actorId: session.user.id,
+    parentId: parent_id ?? null,
+  })
+
   return NextResponse.json(data, { status: 201 })
 }
