@@ -63,18 +63,33 @@ export async function DELETE(
     )
   }
 
-  try {
-    await deleteFileFromDrive(driveAuth, article.drive_file_id)
-  } catch (error) {
-    console.error("Drive file deletion failed:", error)
-    return NextResponse.json(
-      { error: "PDF Drive üzerinden silinemedi. Makale kaydı korunuyor." },
-      { status: 500 }
-    )
+  const requesterIsAppOwner = isAppOwner(session.user.email)
+  let driveDeleted = true
+
+  if (article.drive_file_id) {
+    try {
+      await deleteFileFromDrive(driveAuth, article.drive_file_id)
+    } catch (error) {
+      console.error("Drive file deletion failed:", error)
+      driveDeleted = false
+
+      if (!requesterIsAppOwner) {
+        return NextResponse.json(
+          { error: "PDF Drive üzerinden silinemedi. Makale kaydı korunuyor." },
+          { status: 500 }
+        )
+      }
+    }
   }
 
   const { error } = await supabase.from("articles").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({
+    ok: true,
+    driveDeleted,
+    warning: requesterIsAppOwner && !driveDeleted
+      ? "Makale kaydı silindi, ancak Drive dosyası silinemedi."
+      : undefined,
+  })
 }

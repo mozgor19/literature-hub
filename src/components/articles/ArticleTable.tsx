@@ -59,7 +59,9 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
     try {
       const res = await fetch(`/api/articles/${deleteDialog.articleId}`, { method: "DELETE" })
       const raw = await res.text()
-      const data = raw ? JSON.parse(raw) as { error?: string } : null
+      const data = raw
+        ? JSON.parse(raw) as { error?: string; driveDeleted?: boolean; warning?: string }
+        : null
 
       if (!res.ok) {
         throw new Error(data?.error ?? "Makale silinemedi")
@@ -67,7 +69,11 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
 
       await queryClient.invalidateQueries({ queryKey: ["articles"] })
       await queryClient.invalidateQueries({ queryKey: ["project"] })
-      toast.success("Makale ve Drive üzerindeki PDF silindi")
+      if (data?.driveDeleted === false) {
+        toast.warning(data.warning ?? "Makale kaydı silindi, ancak Drive dosyası silinemedi")
+      } else {
+        toast.success("Makale ve Drive üzerindeki PDF silindi")
+      }
       setDeleteDialog(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Makale silinemedi"
