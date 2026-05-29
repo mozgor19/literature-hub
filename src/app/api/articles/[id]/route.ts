@@ -3,7 +3,6 @@ import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 import { createUserScopedClient } from "@/lib/supabase-user"
 import { deleteFileFromDrive } from "@/lib/drive"
-import { getDriveAuthForRequest } from "@/lib/google-auth"
 import { isAdmin } from "@/lib/permissions"
 
 export async function GET(
@@ -32,68 +31,71 @@ export async function GET(
 }
 
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const driveAuth = await getDriveAuthForRequest(request, session.accessToken)
-  if (!driveAuth) {
-    return NextResponse.json({ error: "Drive erişim tokeni bulunamadı" }, { status: 401 })
-  }
-
   const { id } = await params
 
-  // ── 1. Load article (service role – no RLS gate here) ──────────────────────
-  const { data: article, error: articleError } = await supabase
-    .from("articles")
-    .select("id, drive_file_id, added_by")
-    .eq("id", id)
-    .single()
+  // ── 1. Load article + its current tag IDs (needed for orphan cleanup) ───────
+  const [articleResult, tagLinksResult] = await Promise.all([
+    supabase.from("articles").select("id, drive_file_id, added_by").eq("id", id).single(),
+    supabase.from("article_tags").select("tag_id").eq("article_id", id),
+  ])
 
+  const { data: article, error: articleError } = articleResult
   if (articleError || !article) {
     return NextResponse.json({ error: "Makale bulunamadı" }, { status: 404 })
   }
+  const tagIds = (tagLinksResult.data ?? []).map((t) => t.tag_id)
 
   // ── 2. App-layer permission check (first line of defense) ──────────────────
   const requesterIsAdmin = isAdmin(session.user.email)
-  const isOwner = article.added_by === session.user.id
-  if (!requesterIsAdmin && !isOwner) {
-    return NextResponse.json(
-      { error: "Bu makaleyi silme yetkiniz yok" },
-      { status: 403 }
-    )
+  if (!requesterIsAdmin && article.added_by !== session.user.id) {
+    return NextResponse.json({ error: "Bu makaleyi silme yetkiniz yok" }, { status: 403 })
   }
 
-  // ── 3. Delete PDF from Drive ───────────────────────────────────────────────
+  // ── 3. Delete PDF from Drive (service account; retries built-in) ───────────
   let driveDeleted = true
   if (article.drive_file_id) {
     try {
-      await deleteFileFromDrive(driveAuth, article.drive_file_id)
+      await deleteFileFromDrive(article.drive_file_id)
     } catch (err) {
       console.error("Drive file deletion failed:", err)
       driveDeleted = false
-      // Non-admins: abort; the article row is untouched so the Drive file can
-      // still be found manually.
       if (!requesterIsAdmin) {
         return NextResponse.json(
           { error: "PDF Drive üzerinden silinemedi. Makale kaydı korunuyor." },
           { status: 500 }
         )
       }
-      // Admins: log the drive failure but proceed to remove the DB row.
+      // Admin: log drive failure but proceed to remove the DB row.
     }
   }
 
-  // ── 4. Delete article row via user-scoped client (second line of defense) ──
-  // When SUPABASE_JWT_SECRET is set this uses an RLS-authenticated client so
-  // the "articles_delete_owner_or_admin" policy also applies.
+  // ── 4. Delete article row (user-scoped client → RLS second-line defense) ───
+  // CASCADE on article_tags and project_articles cleans up all references.
   const userDb = await createUserScopedClient(session.user.id)
   const { error: deleteError } = await userDb.from("articles").delete().eq("id", id)
-
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  }
+
+  // ── 5. Delete orphaned tags (tags no longer referenced by any article) ──────
+  if (tagIds.length > 0) {
+    const { data: stillUsed } = await supabase
+      .from("article_tags")
+      .select("tag_id")
+      .in("tag_id", tagIds)
+
+    const stillUsedSet = new Set((stillUsed ?? []).map((r) => r.tag_id))
+    const orphaned = tagIds.filter((tid) => !stillUsedSet.has(tid))
+
+    if (orphaned.length > 0) {
+      await supabase.from("tags").delete().in("id", orphaned)
+    }
   }
 
   return NextResponse.json({

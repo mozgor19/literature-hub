@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 import { uploadFileToDrive, createDriveFolder } from "@/lib/drive"
-import { getDriveAuthForRequest } from "@/lib/google-auth"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -19,22 +18,23 @@ export async function GET(request: Request) {
   const limit = Math.min(100, Math.max(10, Number(searchParams.get("limit") ?? 25)))
   const offset = (page - 1) * limit
 
-  // Resolve tag AND filter: get intersection of article IDs for each tag
+  // Tag AND filter: intersect article IDs for each selected tag (all in parallel)
   let tagFilteredIds: string[] | null = null
   if (tagIds.length > 0) {
-    const tagQueries = await Promise.all(
+    const tagResults = await Promise.all(
       tagIds.map((tagId) =>
         supabase.from("article_tags").select("article_id").eq("tag_id", tagId)
       )
     )
-    const sets = tagQueries.map(
-      (r) => new Set((r.data ?? []).map((t) => t.article_id))
-    )
-    const intersection = sets.reduce(
-      (a, b) => new Set([...a].filter((x) => b.has(x))),
-      sets[0] ?? new Set<string>()
-    )
-    tagFilteredIds = [...intersection]
+    const sets = tagResults.map((r) => new Set((r.data ?? []).map((t) => t.article_id)))
+    tagFilteredIds = [...sets.reduce((a, b) => new Set([...a].filter((x) => b.has(x))), sets[0] ?? new Set<string>())]
+  }
+
+  // If a parent field is filtered, include its children too
+  let fieldIds: string[] | null = null
+  if (fieldId) {
+    const { data: children } = await supabase.from("fields").select("id").eq("parent_id", fieldId)
+    fieldIds = [fieldId, ...(children ?? []).map((f) => f.id)]
   }
 
   let query = supabase
@@ -49,36 +49,22 @@ export async function GET(request: Request) {
     .order("added_at", { ascending: false })
     .range(offset, offset + limit - 1)
 
-  if (fieldId) {
-    // Include field and its children
-    const { data: childFields } = await supabase
-      .from("fields")
-      .select("id")
-      .eq("parent_id", fieldId)
-    const fieldIds = [fieldId, ...(childFields ?? []).map((f) => f.id)]
-    query = query.in("field_id", fieldIds)
-  }
-
+  if (fieldIds) query = query.in("field_id", fieldIds)
   if (tagFilteredIds !== null) {
     query = query.in(
       "id",
       tagFilteredIds.length > 0 ? tagFilteredIds : ["00000000-0000-0000-0000-000000000000"]
     )
   }
-
   if (yearMin !== null) query = query.gte("year", yearMin)
   if (yearMax !== null) query = query.lte("year", yearMax)
   if (mine) query = query.eq("added_by", session.user.id)
-
-  if (q) {
-    query = query.or(`title.ilike.%${q}%,authors.ilike.%${q}%,abstract.ilike.%${q}%`)
-  }
+  if (q) query = query.or(`title.ilike.%${q}%,authors.ilike.%${q}%,abstract.ilike.%${q}%`)
 
   const { data, error, count } = await query
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Get project counts for returned articles
+  // Fetch project counts in parallel with the article list result
   const articleIds = (data ?? []).map((a) => a.id)
   const projectCountMap: Record<string, number> = {}
   if (articleIds.length > 0) {
@@ -103,7 +89,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const driveAuth = await getDriveAuthForRequest(request, session.accessToken)
 
   const formData = await request.formData()
   const file = formData.get("file") as File | null
@@ -118,88 +103,65 @@ export async function POST(request: Request) {
   const newTagNames = JSON.parse((formData.get("new_tags") as string) || "[]") as string[]
 
   if (!title?.trim() || !authors?.trim() || !field_id) {
-    return NextResponse.json(
-      { error: "Başlık, yazarlar ve alan zorunludur" },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: "Başlık, yazarlar ve alan zorunludur" }, { status: 400 })
   }
   if (!file) {
     return NextResponse.json({ error: "PDF dosyası zorunludur" }, { status: 400 })
   }
-  if (!driveAuth) {
-    return NextResponse.json({ error: "Drive erişim tokeni bulunamadı" }, { status: 401 })
-  }
 
-  // Resolve field + build folder path
+  // Fetch field + its parent in ONE query (eliminates the duplicate parent query)
+  type FieldRow = {
+    id: string
+    name: string
+    parent_id: string | null
+    drive_folder_id: string | null
+    parent_field: { id: string; name: string; drive_folder_id: string | null } | null
+  }
   const { data: field } = await supabase
     .from("fields")
-    .select("id, name, parent_id, drive_folder_id")
+    .select(
+      `id, name, parent_id, drive_folder_id,
+      parent_field:fields!parent_id(id, name, drive_folder_id)`
+    )
     .eq("id", field_id)
-    .single()
+    .single() as { data: FieldRow | null }
 
   if (!field) return NextResponse.json({ error: "Alan bulunamadı" }, { status: 404 })
 
-  // Resolve parent for folder path display
-  let parentName: string | null = null
-  if (field.parent_id) {
-    const { data: parent } = await supabase
-      .from("fields")
-      .select("name")
-      .eq("id", field.parent_id)
-      .single()
-    parentName = parent?.name ?? null
-  }
+  const parentField = field.parent_field
+  const parentName = parentField?.name ?? null
   const driveFolderPath = parentName ? `${parentName} / ${field.name}` : field.name
 
-  // Ensure the field has a Drive folder; create it if missing
+  // Ensure field has a Drive folder; create it (and parent folder) if missing
   let driveFolderId = field.drive_folder_id
   if (!driveFolderId) {
     let driveParentId = process.env.DRIVE_ROOT_FOLDER_ID!
-    if (field.parent_id) {
-      const { data: parentField } = await supabase
-        .from("fields")
-        .select("drive_folder_id")
-        .eq("id", field.parent_id)
-        .single()
-      // Create parent folder first if it also doesn't have one
-      if (!parentField?.drive_folder_id) {
-        const newParentFolderId = await createDriveFolder(
-          driveAuth,
-          parentName ?? field.name,
-          process.env.DRIVE_ROOT_FOLDER_ID!
-        )
-        await supabase
-          .from("fields")
-          .update({ drive_folder_id: newParentFolderId })
-          .eq("id", field.parent_id)
-        driveParentId = newParentFolderId
+
+    if (field.parent_id && parentField) {
+      if (!parentField.drive_folder_id) {
+        const newParentId = await createDriveFolder(parentName ?? field.name, process.env.DRIVE_ROOT_FOLDER_ID!)
+        await supabase.from("fields").update({ drive_folder_id: newParentId }).eq("id", field.parent_id)
+        driveParentId = newParentId
       } else {
         driveParentId = parentField.drive_folder_id
       }
     }
+
     try {
-      driveFolderId = await createDriveFolder(
-        driveAuth,
-        field.name,
-        driveParentId
-      )
-      await supabase
-        .from("fields")
-        .update({ drive_folder_id: driveFolderId })
-        .eq("id", field_id)
+      driveFolderId = await createDriveFolder(field.name, driveParentId)
+      await supabase.from("fields").update({ drive_folder_id: driveFolderId }).eq("id", field_id)
     } catch (err) {
       console.error("Drive folder creation failed:", err)
       return NextResponse.json({ error: "Drive klasörü oluşturulamadı" }, { status: 500 })
     }
   }
 
-  // Upload PDF to Drive
+  // Upload PDF to Drive (service account handles auth + retry)
   let driveFileId: string
   let driveWebLink: string
   try {
     const buffer = Buffer.from(await file.arrayBuffer())
     const result = await uploadFileToDrive(
-      driveAuth,
       file.name || `${title}.pdf`,
       file.type || "application/pdf",
       buffer,
@@ -215,13 +177,14 @@ export async function POST(request: Request) {
   // Upsert new tags
   let allTagIds = [...tagIds]
   if (newTagNames.length > 0) {
-    const tagInserts = newTagNames.map((name) => ({ name: name.trim().toLowerCase() }))
     const { data: createdTags, error: tagErr } = await supabase
       .from("tags")
-      .upsert(tagInserts, { onConflict: "name" })
+      .upsert(
+        newTagNames.map((name) => ({ name: name.trim().toLowerCase() })),
+        { onConflict: "name" }
+      )
       .select("id")
     if (tagErr) {
-      // Drive file already uploaded – surface the error but note Drive file exists
       return NextResponse.json(
         { error: `Etiketler oluşturulamadı: ${tagErr.message}` },
         { status: 500 }
@@ -230,7 +193,7 @@ export async function POST(request: Request) {
     allTagIds = [...allTagIds, ...(createdTags ?? []).map((t) => t.id)]
   }
 
-  // Insert article
+  // Insert article row
   const { data: article, error: articleErr } = await supabase
     .from("articles")
     .insert({
@@ -256,13 +219,14 @@ export async function POST(request: Request) {
     )
   }
 
-  // Insert article_tags
+  // Insert tag links
   if (allTagIds.length > 0) {
-    const tagLinks = allTagIds.map((tagId) => ({
-      article_id: article.id,
-      tag_id: tagId,
-    }))
-    await supabase.from("article_tags").upsert(tagLinks, { onConflict: "article_id,tag_id" })
+    await supabase
+      .from("article_tags")
+      .upsert(
+        allTagIds.map((tagId) => ({ article_id: article.id, tag_id: tagId })),
+        { onConflict: "article_id,tag_id" }
+      )
   }
 
   return NextResponse.json(article, { status: 201 })

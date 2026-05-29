@@ -51,7 +51,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: "openid email profile https://www.googleapis.com/auth/drive",
+          // Only basic (non-sensitive) scopes — Drive is handled by a service
+          // account key (GOOGLE_SERVICE_ACCOUNT_JSON), so we no longer need the
+          // user's Drive token. This eliminates the "unverified app" warning.
+          scope: "openid email profile",
           access_type: "offline",
           prompt: "consent",
         },
@@ -76,24 +79,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         )
         const isAdminUser = adminEmails.has((user.email ?? "").toLowerCase())
 
+        // Step 1: upsert core user fields (always works, no migration required)
         const { data: dbUser, error: upsertError } = await supabase
           .from("users")
           .upsert(
-            {
-              email: user.email!,
-              name: user.name ?? null,
-              image: user.image ?? null,
-              is_admin: isAdminUser,
-            },
+            { email: user.email!, name: user.name ?? null, image: user.image ?? null },
             { onConflict: "email" }
           )
           .select("id")
           .single()
 
         if (upsertError || !dbUser?.id) {
-          // Surface the error instead of silently falling back to the Google
-          // sub — a mismatched user.id would break all ownership checks.
           throw new Error(`DB user upsert failed: ${upsertError?.message ?? "no id returned"}`)
+        }
+
+        // Step 2: sync is_admin flag — best-effort, silently skipped if migration
+        // 002 hasn't been applied yet (column won't exist until you run it).
+        const { error: adminErr } = await supabase
+          .from("users")
+          .update({ is_admin: isAdminUser })
+          .eq("id", dbUser.id)
+        if (adminErr) {
+          console.warn("is_admin sync skipped (run migration 002 in Supabase):", adminErr.message)
         }
 
         token.dbUserId = dbUser.id
