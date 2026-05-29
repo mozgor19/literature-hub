@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 import { deleteFileFromDrive } from "@/lib/drive"
 import { getDriveAuthForRequest } from "@/lib/google-auth"
+import { isAppOwner } from "@/lib/permissions"
 
 export async function GET(
   _request: Request,
@@ -44,12 +45,22 @@ export async function DELETE(
 
   const { data: article, error: articleError } = await supabase
     .from("articles")
-    .select("id, drive_file_id")
+    .select("id, drive_file_id, added_by")
     .eq("id", id)
     .single()
 
   if (articleError || !article) {
     return NextResponse.json({ error: "Makale bulunamadı" }, { status: 404 })
+  }
+
+  const canDeleteArticle =
+    isAppOwner(session.user.email) || article.added_by === session.user.id
+
+  if (!canDeleteArticle) {
+    return NextResponse.json(
+      { error: "Bu makaleyi silme yetkiniz yok" },
+      { status: 403 }
+    )
   }
 
   try {

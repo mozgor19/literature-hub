@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 import { useQueryClient } from "@tanstack/react-query"
 import { ExternalLink, Copy, FolderPlus, Check, Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -15,6 +16,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { AddToProjectDialog } from "@/components/projects/AddToProjectDialog"
+import { isAppOwner } from "@/lib/permissions"
 import { formatYear, truncate } from "@/lib/utils"
 import type { ArticleWithRelations } from "@/types/database"
 
@@ -42,6 +44,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export function ArticleTable({ articles, isLoading, total, page, limit, onPageChange }: Props) {
+  const { data: session } = useSession()
   const queryClient = useQueryClient()
   const [projectDialog, setProjectDialog] = useState<{ articleId: string; title: string } | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ articleId: string; title: string; step: 1 | 2 } | null>(null)
@@ -123,6 +126,8 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                   : field.name
                 : "—"
               const addedBy = article.added_by_user as { name: string | null; email: string } | null
+              const canDeleteArticle =
+                isAppOwner(session?.user?.email) || article.added_by === session?.user?.id
 
               return (
                 <TableRow key={article.id}>
@@ -186,15 +191,17 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Makaleyi sil"
-                        onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {canDeleteArticle && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          title="Makaleyi sil"
+                          onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
