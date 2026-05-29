@@ -53,6 +53,14 @@ export async function uploadFileToDrive(
   return { fileId: res.data.id, webViewLink: res.data.webViewLink }
 }
 
+export async function deleteFileFromDrive(
+  accessToken: string,
+  fileId: string
+): Promise<void> {
+  const drive = getDriveClient(accessToken)
+  await drive.files.delete({ fileId })
+}
+
 export async function listDriveFolders(
   accessToken: string,
   parentId: string

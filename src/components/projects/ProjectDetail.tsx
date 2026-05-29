@@ -3,11 +3,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
 import { toast } from "sonner"
-import { ExternalLink, Copy, X, ArrowLeft, Check, Loader2 } from "lucide-react"
+import { ExternalLink, Copy, X, ArrowLeft, Check, Loader2, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DeleteProjectDialog } from "@/components/projects/DeleteProjectDialog"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
@@ -56,6 +57,7 @@ function CopyBtn({ text }: { text: string }) {
 export function ProjectDetail({ id }: { id: string }) {
   const queryClient = useQueryClient()
   const [removing, setRemoving] = useState<string | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const { data: project, isLoading } = useQuery<ProjectData>({
     queryKey: ["project", id],
@@ -105,12 +107,18 @@ export function ProjectDetail({ id }: { id: string }) {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2 text-muted-foreground">
-          <Link href="/projects">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Projeler
-          </Link>
-        </Button>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+            <Link href="/projects">
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Projeler
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 className="h-4 w-4" />
+            Projeyi Sil
+          </Button>
+        </div>
         <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
         {project.description && (
           <p className="text-muted-foreground mt-1">{project.description}</p>
@@ -200,6 +208,14 @@ export function ProjectDetail({ id }: { id: string }) {
           </Table>
         </div>
       )}
+
+      <DeleteProjectDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        projectId={id}
+        projectName={project.name}
+        redirectToProjects={true}
+      />
     </div>
   )
 }

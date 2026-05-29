@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Upload, Plus, Loader2 } from "lucide-react"
+import { Upload, Plus, Loader2, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,7 +20,16 @@ interface SelectedTag {
   name: string
 }
 
+interface ExtractedMetadata {
+  title: string | null
+  authors: string | null
+  year: number | null
+  abstract: string | null
+  tags: string[]
+}
+
 const NO_SUBFIELD_VALUE = "__none__"
+const VERCEL_SAFE_PDF_LIMIT_MB = 4.5
 
 export function AddArticleForm() {
   const router = useRouter()
@@ -37,6 +46,8 @@ export function AddArticleForm() {
   const [selectedSubFieldId, setSelectedSubFieldId] = useState("")
   const [tags, setTags] = useState<SelectedTag[]>([])
   const [file, setFile] = useState<File | null>(null)
+  const [extractingMetadata, setExtractingMetadata] = useState(false)
+  const [extractionSummary, setExtractionSummary] = useState<string | null>(null)
 
   // Inline field creation
   const [showNewFieldDialog, setShowNewFieldDialog] = useState(false)
@@ -51,9 +62,80 @@ export function AddArticleForm() {
 
   const selectedTopField = fields.find((f) => f.id === selectedTopFieldId)
   const subfields = selectedTopField?.children ?? []
+  const fileSizeMb = file ? file.size / 1024 / 1024 : 0
+  const exceedsVercelSafeLimit = fileSizeMb > VERCEL_SAFE_PDF_LIMIT_MB
 
   // The effective field_id for the article: subfield if chosen, else top field
   const effectiveFieldId = selectedSubFieldId || selectedTopFieldId
+
+  const applyExtractedMetadata = (metadata: ExtractedMetadata) => {
+    if (metadata.title && !title.trim()) setTitle(metadata.title)
+    if (metadata.authors && !authors.trim()) setAuthors(metadata.authors)
+    if (metadata.year && !year) setYear(String(metadata.year))
+    if (metadata.abstract && !abstract.trim()) setAbstract(metadata.abstract)
+
+    if (metadata.tags.length > 0) {
+      setTags((current) => {
+        const existing = new Set(current.map((tag) => tag.name.toLowerCase()))
+        const suggested = metadata.tags
+          .filter((tag) => !existing.has(tag.toLowerCase()))
+          .map((tag) => ({ id: null, name: tag }))
+        return [...current, ...suggested]
+      })
+    }
+
+    const populated = [
+      metadata.title ? "başlık" : null,
+      metadata.authors ? "yazarlar" : null,
+      metadata.year ? "yıl" : null,
+      metadata.abstract ? "özet" : null,
+      metadata.tags.length > 0 ? "etiketler" : null,
+    ].filter(Boolean)
+
+    if (populated.length > 0) {
+      setExtractionSummary(
+        `PDF içeriğinden ${populated.join(", ")} için öneriler getirildi. Lütfen doğruluğunu kontrol edin.`
+      )
+    } else {
+      setExtractionSummary("PDF yüklendi, ancak otomatik doldurulabilecek güçlü bir metadata bulunamadı.")
+    }
+  }
+
+  const handleFileChange = async (nextFile: File | null) => {
+    setFile(nextFile)
+    setExtractionSummary(null)
+
+    if (!nextFile) return
+
+    if (nextFile.size / 1024 / 1024 > VERCEL_SAFE_PDF_LIMIT_MB) {
+      toast.warning(
+        `Bu PDF ${VERCEL_SAFE_PDF_LIMIT_MB} MB üzeri. Vercel deployunda yükleme başarısız olabilir; mümkünse daha küçük PDF veya yalnızca kaynak URL kullanın.`
+      )
+    }
+
+    setExtractingMetadata(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", nextFile)
+
+      const res = await fetch("/api/articles/extract", { method: "POST", body: formData })
+      const raw = await res.text()
+      const data = raw ? JSON.parse(raw) as ExtractedMetadata & { error?: string } : null
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "PDF analizi yapılamadı")
+      }
+
+      applyExtractedMetadata(data as ExtractedMetadata)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "PDF analizi yapılamadı"
+      setExtractionSummary("PDF yüklendi. Bilgiler otomatik getirilemedi, alanları elle doldurabilirsiniz.")
+      toast.error(message)
+    } finally {
+      setExtractingMetadata(false)
+    }
+  }
 
   const handleCreateField = async () => {
     if (!newFieldName.trim()) return
@@ -153,6 +235,20 @@ export function AddArticleForm() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic metadata */}
         <div className="grid gap-4">
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-slate-700">
+            <div className="flex items-start gap-3">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div className="space-y-1">
+                <p className="font-medium text-slate-900">
+                  PDF yüklendiğinde başlık, yazarlar, özet, yıl ve etiketler için otomatik öneriler gelir.
+                </p>
+                <p className="text-muted-foreground">
+                  Bu öneriler yardımcı amaçlıdır. Kaydetmeden önce doğruluğunu kontrol etmeniz gerekir.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="title">
               Başlık <span className="text-destructive">*</span>
@@ -353,7 +449,7 @@ export function AddArticleForm() {
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Upload className="h-8 w-8" />
                 <p className="text-sm">PDF dosyası seçin veya sürükleyin</p>
-                <p className="text-xs">Maks. boyut: ~10 MB</p>
+                <p className="text-xs">Vercel deployunda önerilen üst sınır: {VERCEL_SAFE_PDF_LIMIT_MB} MB</p>
               </div>
             )}
             <input
@@ -361,9 +457,28 @@ export function AddArticleForm() {
               type="file"
               accept="application/pdf"
               className="sr-only"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
             />
           </label>
+          <div className="min-h-5">
+            {extractingMetadata ? (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                PDF analiz ediliyor, alanlar otomatik doldurulacak...
+              </p>
+            ) : (
+              extractionSummary && (
+                <p className="text-xs text-muted-foreground">{extractionSummary}</p>
+              )
+            )}
+          </div>
+          {file && exceedsVercelSafeLimit && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Bu dosya yaklaşık {fileSizeMb.toFixed(1)} MB. Vercel üzerindeki yükleme limitleri nedeniyle
+              başarısız olabilir. Mümkünse daha küçük bir PDF kullanın; alternatif olarak şimdilik kaynak
+              URL bilgisini girip belgeyi daha sonra ekleyin.
+            </div>
+          )}
         </div>
 
         {/* Submit */}

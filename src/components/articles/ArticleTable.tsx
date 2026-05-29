@@ -2,10 +2,14 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ExternalLink, Copy, FolderPlus, Check } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
+import { ExternalLink, Copy, FolderPlus, Check, Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -38,8 +42,37 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export function ArticleTable({ articles, isLoading, total, page, limit, onPageChange }: Props) {
+  const queryClient = useQueryClient()
   const [projectDialog, setProjectDialog] = useState<{ articleId: string; title: string } | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ articleId: string; title: string; step: 1 | 2 } | null>(null)
+  const [deletingArticleId, setDeletingArticleId] = useState<string | null>(null)
   const totalPages = Math.ceil(total / limit)
+
+  const handleDelete = async () => {
+    if (!deleteDialog) return
+
+    setDeletingArticleId(deleteDialog.articleId)
+
+    try {
+      const res = await fetch(`/api/articles/${deleteDialog.articleId}`, { method: "DELETE" })
+      const raw = await res.text()
+      const data = raw ? JSON.parse(raw) as { error?: string } : null
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Makale silinemedi")
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["articles"] })
+      await queryClient.invalidateQueries({ queryKey: ["project"] })
+      toast.success("Makale ve Drive üzerindeki PDF silindi")
+      setDeleteDialog(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Makale silinemedi"
+      toast.error(message)
+    } finally {
+      setDeletingArticleId(null)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -153,6 +186,15 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        title="Makaleyi sil"
+                        onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -195,6 +237,69 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
           onOpenChange={(open) => !open && setProjectDialog(null)}
         />
       )}
+
+      <Dialog
+        open={deleteDialog !== null}
+        onOpenChange={(open) => {
+          if (!open && deletingArticleId === null) setDeleteDialog(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          {deleteDialog && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {deleteDialog.step === 1 ? "Makaleyi sil?" : "Son onay"}
+                </DialogTitle>
+                <DialogDescription>
+                  {deleteDialog.step === 1
+                    ? `"${truncate(deleteDialog.title, 80)}" kaydini silmek üzeresiniz.`
+                    : "Bu işlem geri alınamaz. Makale kaydı silinir ve PDF Google Drive üzerinden kalıcı olarak kaldırılır."}
+                </DialogDescription>
+              </DialogHeader>
+
+              {deleteDialog.step === 2 && (
+                <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>
+                      Silme işlemi tamamlandığında proje bağlantıları da kaldırılır ve dosyayı
+                      geri getirmek mümkün olmaz.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteDialog(null)}
+                  disabled={deletingArticleId !== null}
+                >
+                  Vazgeç
+                </Button>
+                {deleteDialog.step === 1 ? (
+                  <Button
+                    variant="destructive"
+                    onClick={() => setDeleteDialog({ ...deleteDialog, step: 2 })}
+                  >
+                    Devam et
+                  </Button>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={deletingArticleId !== null}
+                  >
+                    {deletingArticleId !== null && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Geri alınamaz, sil
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

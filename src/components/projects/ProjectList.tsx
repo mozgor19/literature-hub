@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DeleteProjectDialog } from "@/components/projects/DeleteProjectDialog"
 import { formatDate } from "@/lib/utils"
 import type { DBProject } from "@/types/database"
 
@@ -23,7 +24,7 @@ export function ProjectList() {
   const [name, setName] = useState("")
   const [desc, setDesc] = useState("")
   const [creating, setCreating] = useState(false)
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ id: string; name: string } | null>(null)
 
   const { data: projects = [], isLoading } = useQuery<ProjectWithCount[]>({
     queryKey: ["projects"],
@@ -50,21 +51,6 @@ export function ProjectList() {
       toast.error(String(err))
     } finally {
       setCreating(false)
-    }
-  }
-
-  const handleDelete = async (id: string, projectName: string) => {
-    if (!confirm(`"${projectName}" projesini silmek istediğinize emin misiniz? Makaleler silinmez.`)) return
-    setDeleting(id)
-    try {
-      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Proje silinemedi")
-      await queryClient.invalidateQueries({ queryKey: ["projects"] })
-      toast.success("Proje silindi")
-    } catch (err) {
-      toast.error(String(err))
-    } finally {
-      setDeleting(null)
     }
   }
 
@@ -122,17 +108,12 @@ export function ProjectList() {
               type="button"
               onClick={(e) => {
                 e.preventDefault()
-                handleDelete(project.id, project.name)
+                setDeleteDialog({ id: project.id, name: project.name })
               }}
-              disabled={deleting === project.id}
               className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               title="Projeyi sil"
             >
-              {deleting === project.id ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
+              <Trash2 className="h-4 w-4" />
             </button>
           </Card>
         ))}
@@ -175,6 +156,15 @@ export function ProjectList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {deleteDialog && (
+        <DeleteProjectDialog
+          open={true}
+          onOpenChange={(open) => !open && setDeleteDialog(null)}
+          projectId={deleteDialog.id}
+          projectName={deleteDialog.name}
+        />
+      )}
     </>
   )
 }
