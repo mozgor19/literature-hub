@@ -77,11 +77,28 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Hide body of soft-deleted comments
-  const comments = (data ?? []).map((c) => ({
-    ...c,
-    body: c.is_deleted ? null : c.body,
-  }))
+  const all = data ?? []
+
+  // Build parent→children map for descendant lookup
+  const children = new Map<string | null, string[]>()
+  const deletedById = new Map(all.map((c) => [c.id, c.is_deleted]))
+  for (const c of all) {
+    const list = children.get(c.parent_id) ?? []
+    list.push(c.id)
+    children.set(c.parent_id, list)
+  }
+
+  // Returns true if any descendant is not deleted
+  function hasLivingDescendant(id: string): boolean {
+    return (children.get(id) ?? []).some(
+      (cid) => !deletedById.get(cid) || hasLivingDescendant(cid)
+    )
+  }
+
+  // Soft-deleted comments only kept when they anchor a living reply thread
+  const comments = all
+    .filter((c) => !c.is_deleted || hasLivingDescendant(c.id))
+    .map((c) => ({ ...c, body: c.is_deleted ? null : c.body }))
 
   return NextResponse.json(comments)
 }
