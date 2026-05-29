@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -31,6 +31,15 @@ interface ExtractedMetadata {
   strategy?: "crossref" | "heuristic"
 }
 
+interface ManualOverrides {
+  title: boolean
+  authors: boolean
+  year: boolean
+  abstract: boolean
+  sourceUrl: boolean
+  tags: boolean
+}
+
 const NO_SUBFIELD_VALUE = "__none__"
 const VERCEL_SAFE_PDF_LIMIT_MB = 4.5
 
@@ -51,6 +60,22 @@ export function AddArticleForm() {
   const [file, setFile] = useState<File | null>(null)
   const [extractingMetadata, setExtractingMetadata] = useState(false)
   const [extractionSummary, setExtractionSummary] = useState<string | null>(null)
+  const [, setManualOverrides] = useState<ManualOverrides>({
+    title: false,
+    authors: false,
+    year: false,
+    abstract: false,
+    sourceUrl: false,
+    tags: false,
+  })
+  const manualOverridesRef = useRef<ManualOverrides>({
+    title: false,
+    authors: false,
+    year: false,
+    abstract: false,
+    sourceUrl: false,
+    tags: false,
+  })
 
   // Inline field creation
   const [showNewFieldDialog, setShowNewFieldDialog] = useState(false)
@@ -71,21 +96,38 @@ export function AddArticleForm() {
   // The effective field_id for the article: subfield if chosen, else top field
   const effectiveFieldId = selectedSubFieldId || selectedTopFieldId
 
-  const applyExtractedMetadata = (metadata: ExtractedMetadata) => {
-    if (metadata.title && !title.trim()) setTitle(metadata.title)
-    if (metadata.authors && !authors.trim()) setAuthors(metadata.authors)
-    if (metadata.year && !year) setYear(String(metadata.year))
-    if (metadata.abstract && !abstract.trim()) setAbstract(metadata.abstract)
-    if (metadata.sourceUrl && !sourceUrl.trim()) setSourceUrl(metadata.sourceUrl)
+  const markManualOverride = (field: keyof ManualOverrides) => {
+    setManualOverrides((current) => {
+      const next = { ...current, [field]: true }
+      manualOverridesRef.current = next
+      return next
+    })
+  }
 
-    if (metadata.tags.length > 0) {
-      setTags((current) => {
-        const existing = new Set(current.map((tag) => tag.name.toLowerCase()))
-        const suggested = metadata.tags
-          .filter((tag) => !existing.has(tag.toLowerCase()))
-          .map((tag) => ({ id: null, name: tag }))
-        return [...current, ...suggested]
-      })
+  const resetManualOverrides = () => {
+    const next = {
+      title: false,
+      authors: false,
+      year: false,
+      abstract: false,
+      sourceUrl: false,
+      tags: false,
+    }
+    manualOverridesRef.current = next
+    setManualOverrides(next)
+  }
+
+  const applyExtractedMetadata = (metadata: ExtractedMetadata) => {
+    const overrides = manualOverridesRef.current
+
+    if (!overrides.title) setTitle(metadata.title ?? "")
+    if (!overrides.authors) setAuthors(metadata.authors ?? "")
+    if (!overrides.year) setYear(metadata.year ? String(metadata.year) : "")
+    if (!overrides.abstract) setAbstract(metadata.abstract ?? "")
+    if (!overrides.sourceUrl) setSourceUrl(metadata.sourceUrl ?? "")
+
+    if (!overrides.tags) {
+      setTags(metadata.tags.map((tag) => ({ id: null, name: tag })))
     }
 
     const populated = [
@@ -110,6 +152,7 @@ export function AddArticleForm() {
   const handleFileChange = async (nextFile: File | null) => {
     setFile(nextFile)
     setExtractionSummary(null)
+    resetManualOverrides()
 
     if (!nextFile) return
 
@@ -272,7 +315,10 @@ export function AddArticleForm() {
             <Input
               id="title"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value)
+                markManualOverride("title")
+              }}
               placeholder="Makalenin tam başlığı"
               required
             />
@@ -285,7 +331,10 @@ export function AddArticleForm() {
             <Input
               id="authors"
               value={authors}
-              onChange={(e) => setAuthors(e.target.value)}
+              onChange={(e) => {
+                setAuthors(e.target.value)
+                markManualOverride("authors")
+              }}
               placeholder="Smith J., Doe A., ..."
               required
             />
@@ -298,7 +347,10 @@ export function AddArticleForm() {
                 id="year"
                 type="number"
                 value={year}
-                onChange={(e) => setYear(e.target.value)}
+                onChange={(e) => {
+                  setYear(e.target.value)
+                  markManualOverride("year")
+                }}
                 placeholder="2024"
                 min={1900}
                 max={new Date().getFullYear() + 1}
@@ -309,7 +361,10 @@ export function AddArticleForm() {
               <Input
                 id="source_url"
                 value={sourceUrl}
-                onChange={(e) => setSourceUrl(e.target.value)}
+                onChange={(e) => {
+                  setSourceUrl(e.target.value)
+                  markManualOverride("sourceUrl")
+                }}
                 placeholder="https://doi.org/..."
               />
             </div>
@@ -320,7 +375,10 @@ export function AddArticleForm() {
             <Textarea
               id="abstract"
               value={abstract}
-              onChange={(e) => setAbstract(e.target.value)}
+              onChange={(e) => {
+                setAbstract(e.target.value)
+                markManualOverride("abstract")
+              }}
               placeholder="Makale özeti..."
               rows={4}
             />
@@ -439,7 +497,13 @@ export function AddArticleForm() {
         {/* Tags */}
         <div className="space-y-2">
           <Label>Etiketler</Label>
-          <TagInput value={tags} onChange={setTags} />
+          <TagInput
+            value={tags}
+            onChange={(nextTags) => {
+              setTags(nextTags)
+              markManualOverride("tags")
+            }}
+          />
         </div>
 
         <Separator />
