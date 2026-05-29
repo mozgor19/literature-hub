@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { DBTag, FieldWithChildren } from "@/types/database"
 import { useCallback } from "react"
 
+const ALL_FIELDS_VALUE = "all"
+const NO_SUBFIELD_VALUE = "__none__"
+
 export function ArticleFilters() {
   const router = useRouter()
   const pathname = usePathname()
@@ -34,6 +37,16 @@ export function ArticleFilters() {
     queryKey: ["tags", "all"],
     queryFn: () => fetch("/api/tags").then((r) => r.json()),
   })
+
+  const selectedTopField =
+    fields.find((field) => field.id === fieldId) ??
+    fields.find((field) => field.children.some((child) => child.id === fieldId)) ??
+    null
+
+  const selectedTopFieldId = selectedTopField?.id ?? ""
+  const selectedSubFieldId =
+    selectedTopField && selectedTopField.id !== fieldId ? fieldId : ""
+  const subfields = selectedTopField?.children ?? []
 
   const updateParam = useCallback(
     (key: string, value: string) => {
@@ -62,15 +75,6 @@ export function ArticleFilters() {
   const clearAll = () => {
     router.push(pathname)
   }
-
-  // Flatten fields for the select
-  const flatFields: Array<{ id: string; label: string }> = []
-  fields.forEach((f) => {
-    flatFields.push({ id: f.id, label: f.name })
-    f.children.forEach((c) => {
-      flatFields.push({ id: c.id, label: `  ${f.name} / ${c.name}` })
-    })
-  })
 
   const hasFilters = q || fieldId || tagsParam || yearMin || yearMax
 
@@ -103,19 +107,58 @@ export function ArticleFilters() {
       {/* Field filter */}
       <div className="space-y-2">
         <Label>Alan</Label>
-        <Select value={fieldId} onValueChange={(v) => updateParam("field_id", v === "all" ? "" : v)}>
+        <Select
+          value={selectedTopFieldId || ALL_FIELDS_VALUE}
+          onValueChange={(value) => {
+            if (value === ALL_FIELDS_VALUE) {
+              updateParam("field_id", "")
+              return
+            }
+
+            updateParam("field_id", value)
+          }}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Tüm alanlar" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tüm Alanlar</SelectItem>
-            {flatFields.map((f) => (
-              <SelectItem key={f.id} value={f.id}>
-                {f.label}
+            <SelectItem value={ALL_FIELDS_VALUE}>Tüm Alanlar</SelectItem>
+            {fields.map((field) => (
+              <SelectItem key={field.id} value={field.id}>
+                {field.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        {selectedTopField && subfields.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <Label className="text-xs text-muted-foreground">Alt Alan</Label>
+            <Select
+              value={selectedSubFieldId || NO_SUBFIELD_VALUE}
+              onValueChange={(value) => {
+                if (value === NO_SUBFIELD_VALUE) {
+                  updateParam("field_id", selectedTopField.id)
+                  return
+                }
+
+                updateParam("field_id", value)
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Alt alan seçin..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_SUBFIELD_VALUE}>Tüm {selectedTopField.name}</SelectItem>
+                {subfields.map((field) => (
+                  <SelectItem key={field.id} value={field.id}>
+                    {field.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       <Separator />
