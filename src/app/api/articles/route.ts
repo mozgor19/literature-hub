@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from("articles")
     .select(
-      `id, title, authors, year, source_url, notes, drive_web_link, drive_folder_path, field_id, added_at,
+      `id, title, authors, year, source_url, notes, drive_web_link, drive_folder_path, field_id, added_at, added_by,
       field:fields!field_id(id, name, parent_id),
       article_tags(tag_id, tags(id, name)),
       added_by_user:users!added_by(id, name, email)`,

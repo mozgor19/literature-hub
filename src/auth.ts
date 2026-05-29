@@ -68,20 +68,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.refreshToken = account.refresh_token
         token.expiresAt = account.expires_at
 
-        const { data: dbUser } = await supabase
+        const adminEmails = new Set(
+          (process.env.ADMIN_EMAILS ?? "")
+            .split(",")
+            .map((e) => e.trim().toLowerCase())
+            .filter(Boolean)
+        )
+        const isAdminUser = adminEmails.has((user.email ?? "").toLowerCase())
+
+        const { data: dbUser, error: upsertError } = await supabase
           .from("users")
           .upsert(
             {
               email: user.email!,
               name: user.name ?? null,
               image: user.image ?? null,
+              is_admin: isAdminUser,
             },
             { onConflict: "email" }
           )
           .select("id")
           .single()
 
-        token.dbUserId = dbUser?.id ?? undefined
+        if (upsertError || !dbUser?.id) {
+          // Surface the error instead of silently falling back to the Google
+          // sub — a mismatched user.id would break all ownership checks.
+          throw new Error(`DB user upsert failed: ${upsertError?.message ?? "no id returned"}`)
+        }
+
+        token.dbUserId = dbUser.id
         return token
       }
 

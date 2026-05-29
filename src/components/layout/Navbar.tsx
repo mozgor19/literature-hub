@@ -13,7 +13,7 @@ import {
 import { cn } from "@/lib/utils"
 
 const navLinks = [
-  { href: "/", label: "Makaleler", icon: BookText },
+  { href: "/articles", label: "Makaleler", icon: BookText },
   { href: "/fields", label: "Alanlar", icon: FolderTree },
   { href: "/projects", label: "Projeler", icon: FolderOpen },
 ]

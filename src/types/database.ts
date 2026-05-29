@@ -4,9 +4,9 @@ export type Database = {
   public: {
     Tables: {
       users: {
-        Row: { id: string; email: string; name: string | null; image: string | null; created_at: string }
-        Insert: { id?: string; email: string; name?: string | null; image?: string | null; created_at?: string }
-        Update: { id?: string; email?: string; name?: string | null; image?: string | null; created_at?: string }
+        Row: { id: string; email: string; name: string | null; image: string | null; is_admin: boolean; created_at: string }
+        Insert: { id?: string; email: string; name?: string | null; image?: string | null; is_admin?: boolean; created_at?: string }
+        Update: { id?: string; email?: string; name?: string | null; image?: string | null; is_admin?: boolean; created_at?: string }
         Relationships: []
       }
       fields: {
