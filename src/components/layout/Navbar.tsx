@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { useSession } from "next-auth/react"
-import { BookOpen, BookText, FolderTree, LogOut, FolderOpen, ChevronDown } from "lucide-react"
+import { BookOpen, BookText, FolderTree, LogOut, FolderOpen, ChevronDown, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -82,6 +82,12 @@ export function Navbar() {
                   {session.user.email}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/profile" className="cursor-pointer">
+                    <User className="h-4 w-4 mr-2" />
+                    Profilim
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => signOut({ callbackUrl: "/signin" })}
                   className="text-destructive focus:text-destructive cursor-pointer"

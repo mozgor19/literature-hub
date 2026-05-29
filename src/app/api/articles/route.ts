@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   const yearMin = searchParams.get("year_min") ? Number(searchParams.get("year_min")) : null
   const yearMax = searchParams.get("year_max") ? Number(searchParams.get("year_max")) : null
   const q = searchParams.get("q")?.trim()
+  const mine = searchParams.get("mine") === "1"
   const page = Math.max(1, Number(searchParams.get("page") ?? 1))
   const limit = Math.min(100, Math.max(10, Number(searchParams.get("limit") ?? 25)))
   const offset = (page - 1) * limit
@@ -66,6 +67,7 @@ export async function GET(request: Request) {
 
   if (yearMin !== null) query = query.gte("year", yearMin)
   if (yearMax !== null) query = query.lte("year", yearMax)
+  if (mine) query = query.eq("added_by", session.user.id)
 
   if (q) {
     query = query.or(`title.ilike.%${q}%,authors.ilike.%${q}%,abstract.ilike.%${q}%`)
@@ -77,7 +79,7 @@ export async function GET(request: Request) {
 
   // Get project counts for returned articles
   const articleIds = (data ?? []).map((a) => a.id)
-  let projectCountMap: Record<string, number> = {}
+  const projectCountMap: Record<string, number> = {}
   if (articleIds.length > 0) {
     const { data: pcData } = await supabase
       .from("project_articles")
