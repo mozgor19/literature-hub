@@ -95,7 +95,7 @@ export async function POST(req: Request, { params }: Params) {
 
   const trimmed = body?.trim()
   if (!trimmed) return NextResponse.json({ error: "Yorum boş olamaz" }, { status: 400 })
-  if (trimmed.length > 4000) return NextResponse.json({ error: "Yorum çok uzun (maks 4000 karakter)" }, { status: 400 })
+  if (trimmed.length > 8000) return NextResponse.json({ error: "Yorum çok uzun (maks 8000 karakter)" }, { status: 400 })
 
   // If replying, verify the parent belongs to the same article and is top-level
   if (parent_id) {
@@ -106,10 +106,6 @@ export async function POST(req: Request, { params }: Params) {
       .single()
     if (!parent || parent.article_id !== article_id) {
       return NextResponse.json({ error: "Geçersiz üst yorum" }, { status: 400 })
-    }
-    // Flatten: replies to replies become replies to the top-level comment
-    if (parent.parent_id) {
-      return NextResponse.json({ error: "Yalnızca bir seviye iç içe yanıt destekleniyor" }, { status: 400 })
     }
   }
 

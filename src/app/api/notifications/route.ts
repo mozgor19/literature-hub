@@ -10,7 +10,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("notifications")
     .select(`
-      id, type, is_read, created_at,
+      id, type, is_read, created_at, comment_id,
       article:articles!article_id(id, title),
       actor:users!actor_id(id, name, email, image)
     `)

@@ -66,7 +66,9 @@ export function NotificationBell() {
   const handleClick = (n: NotificationWithDetails) => {
     setOpen(false)
     const article = n.article as { id: string } | null
-    if (article?.id) router.push(`/articles/${article.id}`)
+    if (!article?.id) return
+    const hash = n.comment_id ? `#comment-${n.comment_id}` : ""
+    router.push(`/articles/${article.id}${hash}`)
   }
 
   return (
