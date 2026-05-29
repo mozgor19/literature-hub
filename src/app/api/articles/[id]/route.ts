@@ -41,7 +41,7 @@ export async function DELETE(
 
   // ── 1. Load article + its current tag IDs (needed for orphan cleanup) ───────
   const [articleResult, tagLinksResult] = await Promise.all([
-    supabase.from("articles").select("id, drive_file_id, added_by").eq("id", id).single(),
+    supabase.from("articles").select("id, drive_file_id, added_by, field_id").eq("id", id).single(),
     supabase.from("article_tags").select("tag_id").eq("article_id", id),
   ])
 
@@ -97,6 +97,26 @@ export async function DELETE(
 
     if (orphaned.length > 0) {
       await supabase.from("tags").delete().in("id", orphaned)
+    }
+  }
+
+  // ── 6. Delete orphaned sub-field (no articles left + has a parent) ──────────
+  if (article.field_id) {
+    const { data: field } = await supabase
+      .from("fields")
+      .select("id, parent_id")
+      .eq("id", article.field_id)
+      .single()
+
+    if (field?.parent_id) {
+      const { count: remaining } = await supabase
+        .from("articles")
+        .select("id", { count: "exact", head: true })
+        .eq("field_id", field.id)
+
+      if ((remaining ?? 0) === 0) {
+        await supabase.from("fields").delete().eq("id", field.id)
+      }
     }
   }
 
