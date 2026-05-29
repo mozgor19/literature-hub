@@ -1,4 +1,4 @@
-import { PDFParse } from "pdf-parse"
+import pdf from "pdf-parse"
 
 interface ExtractedPdfMetadata {
   title: string | null
@@ -235,53 +235,45 @@ function deriveTags(title: string | null, abstract: string | null, text: string)
 }
 
 export async function extractPdfMetadata(data: Uint8Array): Promise<ExtractedPdfMetadata> {
-  // Use a plain Uint8Array copy so pdf.js worker messaging can structured-clone it safely.
-  const parser = new PDFParse({ data: new Uint8Array(data) })
+  const result = await pdf(Buffer.from(data), { max: 3 })
+  const text = normalizeWhitespace(result.text ?? "")
+  const lines = text
+    .split("\n")
+    .map(cleanLine)
+    .filter(Boolean)
 
-  try {
-    const infoResult = await parser.getInfo()
-    const textResult = await parser.getText({ first: 3 })
+  const info = (result.info ?? {}) as Record<string, string | undefined>
+  const title = extractTitle(lines, info.Title ?? null)
+  const authors = extractAuthors(lines, title, info.Author ?? null)
+  const abstract = extractAbstract(text)
+  const year = extractYear(text, info.CreationDate ?? null)
+  const tags = deriveTags(title, abstract, text)
+  const doi = extractDoi(text)
 
-    const text = normalizeWhitespace(textResult.text)
-    const lines = text
-      .split("\n")
-      .map(cleanLine)
-      .filter(Boolean)
-
-    const title = extractTitle(lines, infoResult.info?.Title ?? null)
-    const authors = extractAuthors(lines, title, infoResult.info?.Author ?? null)
-    const abstract = extractAbstract(text)
-    const year = extractYear(text, infoResult.info?.CreationDate ?? null)
-    const tags = deriveTags(title, abstract, text)
-    const doi = extractDoi(text)
-
-    if (doi) {
-      const crossrefMetadata = await fetchCrossrefMetadata(doi)
-      if (crossrefMetadata) {
-        return {
-          title: crossrefMetadata.title ?? title,
-          authors: crossrefMetadata.authors ?? authors,
-          year: crossrefMetadata.year ?? year,
-          abstract: crossrefMetadata.abstract ?? abstract,
-          tags: crossrefMetadata.tags?.length ? crossrefMetadata.tags : tags,
-          sourceUrl: crossrefMetadata.sourceUrl ?? `https://doi.org/${doi}`,
-          doi: crossrefMetadata.doi ?? doi,
-          strategy: "crossref",
-        }
+  if (doi) {
+    const crossrefMetadata = await fetchCrossrefMetadata(doi)
+    if (crossrefMetadata) {
+      return {
+        title: crossrefMetadata.title ?? title,
+        authors: crossrefMetadata.authors ?? authors,
+        year: crossrefMetadata.year ?? year,
+        abstract: crossrefMetadata.abstract ?? abstract,
+        tags: crossrefMetadata.tags?.length ? crossrefMetadata.tags : tags,
+        sourceUrl: crossrefMetadata.sourceUrl ?? `https://doi.org/${doi}`,
+        doi: crossrefMetadata.doi ?? doi,
+        strategy: "crossref",
       }
     }
+  }
 
-    return {
-      title,
-      authors,
-      year,
-      abstract,
-      tags,
-      sourceUrl: doi ? `https://doi.org/${doi}` : null,
-      doi,
-      strategy: "heuristic",
-    }
-  } finally {
-    await parser.destroy()
+  return {
+    title,
+    authors,
+    year,
+    abstract,
+    tags,
+    sourceUrl: doi ? `https://doi.org/${doi}` : null,
+    doi,
+    strategy: "heuristic",
   }
 }
