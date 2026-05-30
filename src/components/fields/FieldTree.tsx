@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip } from "@/components/ui/tooltip"
 import type { FieldWithChildren } from "@/types/database"
 
 // ── Recursive field node ──────────────────────────────────────────────────────
@@ -80,29 +81,32 @@ function FieldNode({
           <span className="text-xs text-muted-foreground hidden lg:inline shrink-0">Drive ✓</span>
         )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1 text-xs h-7 shrink-0"
-          onClick={() => onCreateChild(field.id)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Alt Alan</span>
-        </Button>
-
-        {canDelete && field.children.length === 0 && (
+        <Tooltip content="Bu alanın altına yeni bir alt alan ekle">
           <Button
             variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-            title="Alanı sil"
-            disabled={deletingId === field.id}
-            onClick={() => onDelete(field.id, field.name)}
+            size="sm"
+            className="gap-1 text-xs h-7 shrink-0"
+            onClick={() => onCreateChild(field.id)}
           >
-            {deletingId === field.id
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Trash2 className="h-3.5 w-3.5" />}
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Alt Alan</span>
           </Button>
+        </Tooltip>
+
+        {canDelete && field.children.length === 0 && (
+          <Tooltip content="Alanı ve Drive klasörünü sil">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+              disabled={deletingId === field.id}
+              onClick={() => onDelete(field.id, field.name)}
+            >
+              {deletingId === field.id
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Trash2 className="h-3.5 w-3.5" />}
+            </Button>
+          </Tooltip>
         )}
       </div>
 

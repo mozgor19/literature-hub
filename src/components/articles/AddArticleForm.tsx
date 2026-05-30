@@ -14,8 +14,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Separator } from "@/components/ui/separator"
 import { TagInput } from "./TagInput"
 import { AuthorInput, parseAuthorsText } from "./AuthorInput"
+import { OrgInput } from "./OrgInput"
+import { Tooltip } from "@/components/ui/tooltip"
 import type { FieldWithChildren } from "@/types/database"
 import type { SelectedAuthor } from "./AuthorInput"
+import type { SelectedOrg } from "./OrgInput"
 
 // Flatten a recursive field tree into a list with readable path labels
 function flattenFields(
@@ -91,6 +94,8 @@ export function AddArticleForm() {
   // Form fields
   const [title, setTitle] = useState("")
   const [authorList, setAuthorList] = useState<SelectedAuthor[]>([])
+  const [orgList, setOrgList] = useState<SelectedOrg[]>([])
+  const [gitRepoUrl, setGitRepoUrl] = useState("")
   const [year, setYear] = useState("")
   const [abstract, setAbstract] = useState("")
   const [sourceUrl, setSourceUrl] = useState("")
@@ -329,6 +334,8 @@ export function AddArticleForm() {
     const newTagNames = tags.filter((t) => t.id === null).map((t) => t.name)
     const existingAuthorIds = authorList.filter((a) => a.id !== null).map((a) => a.id as string)
     const newAuthorNames = authorList.filter((a) => a.id === null).map((a) => a.name)
+    const existingOrgIds = orgList.filter((o) => o.id !== null).map((o) => o.id as string)
+    const newOrgNames = orgList.filter((o) => o.id === null).map((o) => o.name)
 
     const formData = new FormData()
     formData.append("title", title.trim())
@@ -341,6 +348,9 @@ export function AddArticleForm() {
     formData.append("new_tags", JSON.stringify(newTagNames))
     formData.append("author_ids", JSON.stringify(existingAuthorIds))
     formData.append("new_authors", JSON.stringify(newAuthorNames))
+    formData.append("org_ids", JSON.stringify(existingOrgIds))
+    formData.append("new_orgs", JSON.stringify(newOrgNames))
+    if (gitRepoUrl.trim()) formData.append("git_repo_url", gitRepoUrl.trim())
     formData.append("file", file)
 
     try {
@@ -454,6 +464,17 @@ export function AddArticleForm() {
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="git_repo_url">Git Deposu URL</Label>
+            <Input
+              id="git_repo_url"
+              value={gitRepoUrl}
+              onChange={(e) => setGitRepoUrl(e.target.value)}
+              placeholder="https://github.com/..."
+              type="url"
+            />
+          </div>
+
+          <div className="space-y-2">
             <div className="flex items-center">
               <Label htmlFor="abstract">Özet</Label>
               <SourceBadge source={fieldSources.abstract as MetadataFieldSource | undefined} />
@@ -531,6 +552,12 @@ export function AddArticleForm() {
           />
         </div>
 
+        {/* Organizations */}
+        <div className="space-y-2">
+          <Label>Kurum / Şirket</Label>
+          <OrgInput value={orgList} onChange={setOrgList} />
+        </div>
+
         <Separator />
 
         {/* File upload */}
@@ -582,15 +609,16 @@ export function AddArticleForm() {
               <div className="flex items-start gap-2">
                 <p className="flex-1 text-xs text-muted-foreground">{extractionSummary}</p>
                 {file && (
-                  <button
-                    type="button"
-                    onClick={handleRefetchMetadata}
-                    className="flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
-                    title="Metadata'yı yeniden ara"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Yeniden ara
-                  </button>
+                  <Tooltip content="DOI / arXiv üzerinden metadata'yı yeniden çek" side="top">
+                    <button
+                      type="button"
+                      onClick={handleRefetchMetadata}
+                      className="flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Yeniden ara
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             )}

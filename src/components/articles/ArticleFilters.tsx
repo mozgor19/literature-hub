@@ -10,8 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { FieldWithChildren } from "@/types/database"
-import type { AuthorWithCount } from "@/types/database"
+import type { FieldWithChildren, AuthorWithCount, OrgWithCount } from "@/types/database"
 
 const ALL_FIELDS_VALUE = "all"
 
@@ -35,14 +34,18 @@ export function ArticleFilters() {
   const fieldId = searchParams.get("field_id") ?? ""
   const tagsParam = searchParams.get("tags") ?? ""
   const authorsParam = searchParams.get("authors") ?? ""
+  const orgsParam = searchParams.get("orgs") ?? ""
   const yearMin = searchParams.get("year_min") ?? ""
   const yearMax = searchParams.get("year_max") ?? ""
 
   const selectedTagIds = tagsParam ? tagsParam.split(",").filter(Boolean) : []
   const selectedAuthorIds = authorsParam ? authorsParam.split(",").filter(Boolean) : []
+  const selectedOrgIds = orgsParam ? orgsParam.split(",").filter(Boolean) : []
 
   const [authorSearch, setAuthorSearch] = useState("")
   const [showAuthorSuggestions, setShowAuthorSuggestions] = useState(false)
+  const [orgSearch, setOrgSearch] = useState("")
+  const [showOrgSuggestions, setShowOrgSuggestions] = useState(false)
 
   const { data: fields = [] } = useQuery<FieldWithChildren[]>({
     queryKey: ["fields"],
@@ -69,6 +72,20 @@ export function ArticleFilters() {
         : Promise.resolve([]),
     enabled: selectedAuthorIds.length > 0,
     select: (data) => data.filter((a) => selectedAuthorIds.includes(a.id)),
+  })
+
+  const { data: orgSuggestions = [] } = useQuery<OrgWithCount[]>({
+    queryKey: ["orgs", orgSearch],
+    queryFn: () => fetch(`/api/organizations?q=${encodeURIComponent(orgSearch)}`).then((r) => r.json()),
+    enabled: orgSearch.length > 0,
+  })
+
+  const { data: selectedOrgs = [] } = useQuery<OrgWithCount[]>({
+    queryKey: ["orgs-selected", selectedOrgIds.join(",")],
+    queryFn: () =>
+      selectedOrgIds.length > 0 ? fetch(`/api/organizations?q=`).then((r) => r.json()) : Promise.resolve([]),
+    enabled: selectedOrgIds.length > 0,
+    select: (data) => data.filter((o) => selectedOrgIds.includes(o.id)),
   })
 
   const flatFields = flattenFields(fields)
@@ -102,9 +119,21 @@ export function ArticleFilters() {
     updateParam("authors", selectedAuthorIds.filter((id) => id !== authorId).join(","))
   }
 
+  const addOrg = (orgId: string) => {
+    if (!selectedOrgIds.includes(orgId)) {
+      updateParam("orgs", [...selectedOrgIds, orgId].join(","))
+    }
+    setOrgSearch("")
+    setShowOrgSuggestions(false)
+  }
+
+  const removeOrg = (orgId: string) => {
+    updateParam("orgs", selectedOrgIds.filter((id) => id !== orgId).join(","))
+  }
+
   const clearAll = () => router.push(pathname)
 
-  const hasFilters = q || fieldId || tagsParam || authorsParam || yearMin || yearMax
+  const hasFilters = q || fieldId || tagsParam || authorsParam || orgsParam || yearMin || yearMax
 
   // Find label for currently selected field
   const selectedFieldLabel = flatFields.find((f) => f.id === fieldId)?.label?.trim() ?? ""
@@ -209,6 +238,59 @@ export function ArticleFilters() {
                     >
                       <span>{a.name}</span>
                       <span className="text-xs text-muted-foreground ml-2">{a.article_count}</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Organization filter — AND semantics */}
+      <div className="space-y-2">
+        <Label>Kurum / Şirket</Label>
+        <p className="text-xs text-muted-foreground -mt-1">
+          Birden fazla seçilirse AND filtresi uygulanır
+        </p>
+        {selectedOrgIds.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {selectedOrgIds.map((id) => {
+              const found = selectedOrgs.find((o) => o.id === id)
+              return (
+                <Badge key={id} variant="default" className="gap-1 pr-1 text-xs">
+                  {found?.name ?? id.slice(0, 8)}
+                  <button type="button" onClick={() => removeOrg(id)} className="rounded-full hover:opacity-70">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )
+            })}
+          </div>
+        )}
+        <div className="relative">
+          <Input
+            placeholder="Kurum ara..."
+            value={orgSearch}
+            onChange={(e) => { setOrgSearch(e.target.value); setShowOrgSuggestions(true) }}
+            onFocus={() => setShowOrgSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowOrgSuggestions(false), 150)}
+            className="text-sm"
+          />
+          {showOrgSuggestions && orgSearch && orgSuggestions.length > 0 && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+              <ul className="py-1 max-h-48 overflow-y-auto">
+                {orgSuggestions
+                  .filter((o) => !selectedOrgIds.includes(o.id))
+                  .map((o) => (
+                    <li
+                      key={o.id}
+                      onMouseDown={() => addOrg(o.id)}
+                      className="flex items-center justify-between cursor-pointer px-3 py-1.5 text-sm hover:bg-accent"
+                    >
+                      <span>{o.name}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{o.article_count}</span>
                     </li>
                   ))}
               </ul>

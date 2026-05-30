@@ -6,7 +6,7 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CommentSection } from "@/components/comments/CommentSection"
-import { ArrowLeft, ExternalLink, Calendar, User, FolderOpen } from "lucide-react"
+import { ArrowLeft, ExternalLink, Calendar, User, FolderOpen, GitBranch, Building2 } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 
@@ -22,10 +22,11 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
   const { data: article, error } = await supabase
     .from("articles")
     .select(`
-      id, title, authors, year, abstract, source_url, notes,
+      id, title, authors, year, abstract, source_url, notes, git_repo_url,
       drive_web_link, drive_folder_path, added_at,
       field:fields!field_id(id, name, parent_id),
       article_tags(tags(id, name)),
+      article_organizations(organizations!org_id(id, name)),
       added_by_user:users!added_by(id, name, email)
     `)
     .eq("id", id)
@@ -34,6 +35,7 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
   if (error || !article) notFound()
 
   const tags = (article.article_tags ?? []).map((at: { tags: unknown }) => at.tags).filter(Boolean) as Array<{ id: string; name: string }>
+  const orgs = (article.article_organizations ?? []).map((ao: { organizations: unknown }) => ao.organizations).filter(Boolean) as Array<{ id: string; name: string }>
   const field = article.field as { name: string; parent_id: string | null } | null
   const addedBy = article.added_by_user as { name: string | null; email: string } | null
 
@@ -89,6 +91,17 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
+        {orgs.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            {orgs.map((org) => (
+              <Badge key={org.id} variant="outline" className="text-xs">
+                {org.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2 pt-1 w-full">
           <Button asChild size="sm">
             <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
@@ -101,6 +114,14 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
               <a href={article.source_url} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                 Kaynak
+              </a>
+            </Button>
+          )}
+          {article.git_repo_url && (
+            <Button asChild size="sm" variant="outline">
+              <a href={article.git_repo_url} target="_blank" rel="noopener noreferrer">
+                <GitBranch className="h-3.5 w-3.5 mr-1.5" />
+                Git Deposu
               </a>
             </Button>
           )}

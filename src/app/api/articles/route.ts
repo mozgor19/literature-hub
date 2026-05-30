@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   const fieldId = searchParams.get("field_id")
   const tagIds = searchParams.get("tags")?.split(",").filter(Boolean) ?? []
   const authorIds = searchParams.get("authors")?.split(",").filter(Boolean) ?? []
+  const orgIds = searchParams.get("orgs")?.split(",").filter(Boolean) ?? []
   const yearMin = searchParams.get("year_min") ? Number(searchParams.get("year_min")) : null
   const yearMax = searchParams.get("year_max") ? Number(searchParams.get("year_max")) : null
   const q = searchParams.get("q")?.trim()
@@ -41,6 +42,18 @@ export async function GET(request: Request) {
     )
     const sets = authorResults.map((r) => new Set((r.data ?? []).map((t) => t.article_id)))
     authorFilteredIds = [...sets.reduce((a, b) => new Set([...a].filter((x) => b.has(x))), sets[0] ?? new Set<string>())]
+  }
+
+  // Org AND filter
+  let orgFilteredIds: string[] | null = null
+  if (orgIds.length > 0) {
+    const orgResults = await Promise.all(
+      orgIds.map((orgId) =>
+        supabase.from("article_organizations").select("article_id").eq("org_id", orgId)
+      )
+    )
+    const sets = orgResults.map((r) => new Set((r.data ?? []).map((t) => t.article_id)))
+    orgFilteredIds = [...sets.reduce((a, b) => new Set([...a].filter((x) => b.has(x))), sets[0] ?? new Set<string>())]
   }
 
   // Field filter: include all descendants at any depth (recursive walk)
@@ -80,6 +93,12 @@ export async function GET(request: Request) {
       authorFilteredIds.length > 0 ? authorFilteredIds : ["00000000-0000-0000-0000-000000000000"]
     )
   }
+  if (orgFilteredIds !== null) {
+    query = query.in(
+      "id",
+      orgFilteredIds.length > 0 ? orgFilteredIds : ["00000000-0000-0000-0000-000000000000"]
+    )
+  }
   if (yearMin !== null) query = query.gte("year", yearMin)
   if (yearMax !== null) query = query.lte("year", yearMax)
   if (mine) query = query.eq("added_by", session.user.id)
@@ -88,13 +107,14 @@ export async function GET(request: Request) {
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Fetch project counts, comment counts, and normalized authors in parallel
+  // Fetch project counts, comment counts, normalized authors, and orgs in parallel
   const articleIds = (data ?? []).map((a) => a.id)
   const projectCountMap: Record<string, number> = {}
   const commentCountMap: Record<string, number> = {}
   const authorMap: Record<string, Array<{ id: string; name: string }>> = {}
+  const orgMap: Record<string, Array<{ id: string; name: string }>> = {}
   if (articleIds.length > 0) {
-    const [pcResult, ccResult, aaResult] = await Promise.all([
+    const [pcResult, ccResult, aaResult, aoResult] = await Promise.all([
       supabase.from("project_articles").select("article_id").in("article_id", articleIds),
       supabase.from("comments").select("article_id").in("article_id", articleIds).eq("is_deleted", false),
       supabase
@@ -102,6 +122,10 @@ export async function GET(request: Request) {
         .select("article_id, position, author:authors!author_id(id, name)")
         .in("article_id", articleIds)
         .order("position"),
+      supabase
+        .from("article_organizations")
+        .select("article_id, org:organizations!org_id(id, name)")
+        .in("article_id", articleIds),
     ])
     ;(pcResult.data ?? []).forEach((row) => {
       projectCountMap[row.article_id] = (projectCountMap[row.article_id] ?? 0) + 1
@@ -115,6 +139,12 @@ export async function GET(request: Request) {
       if (!authorMap[row.article_id]) authorMap[row.article_id] = []
       authorMap[row.article_id].push({ id: a.id, name: a.name })
     })
+    ;(aoResult.data ?? []).forEach((row) => {
+      const o = row.org as { id: string; name: string } | null
+      if (!o) return
+      if (!orgMap[row.article_id]) orgMap[row.article_id] = []
+      orgMap[row.article_id].push({ id: o.id, name: o.name })
+    })
   }
 
   const articles = (data ?? []).map((a) => ({
@@ -123,6 +153,7 @@ export async function GET(request: Request) {
     project_count: projectCountMap[a.id] ?? 0,
     comment_count: commentCountMap[a.id] ?? 0,
     normalized_authors: authorMap[a.id] ?? [],
+    organizations: orgMap[a.id] ?? [],
   }))
 
   return NextResponse.json({ articles, total: count ?? 0, page, limit })
@@ -142,9 +173,14 @@ export async function POST(request: Request) {
   const field_id = formData.get("field_id") as string
   const tagIds = JSON.parse((formData.get("tag_ids") as string) || "[]") as string[]
   const newTagNames = JSON.parse((formData.get("new_tags") as string) || "[]") as string[]
-  // Normalized authors: existing IDs + new names
   const existingAuthorIds = JSON.parse((formData.get("author_ids") as string) || "[]") as string[]
   const newAuthorNames = JSON.parse((formData.get("new_authors") as string) || "[]") as string[]
+  const existingOrgIds = JSON.parse((formData.get("org_ids") as string) || "[]") as string[]
+  const newOrgNames = JSON.parse((formData.get("new_orgs") as string) || "[]") as string[]
+  const git_repo_url_raw = (formData.get("git_repo_url") as string | null)?.trim() || null
+  // Light server-side URL validation
+  const git_repo_url =
+    git_repo_url_raw && /^https?:\/\/.+/.test(git_repo_url_raw) ? git_repo_url_raw : null
 
   if (!title?.trim() || !field_id) {
     return NextResponse.json({ error: "Başlık ve alan zorunludur" }, { status: 400 })
@@ -279,6 +315,7 @@ export async function POST(request: Request) {
       abstract: abstract || null,
       source_url: source_url || null,
       notes: notes || null,
+      git_repo_url,
       field_id,
       drive_file_id: driveFileId,
       drive_web_link: driveWebLink,
@@ -310,6 +347,27 @@ export async function POST(request: Request) {
       .upsert(
         allTagIds.map((tagId) => ({ article_id: article.id, tag_id: tagId })),
         { onConflict: "article_id,tag_id" }
+      )
+  }
+
+  // Upsert organizations and link to article
+  let allOrgIds = [...existingOrgIds]
+  if (newOrgNames.length > 0) {
+    const { data: upsertedOrgs } = await supabase
+      .from("organizations")
+      .upsert(
+        newOrgNames.map((name) => ({ name: name.trim() })),
+        { onConflict: "name" }
+      )
+      .select("id")
+    allOrgIds = [...allOrgIds, ...(upsertedOrgs ?? []).map((o) => o.id)]
+  }
+  if (allOrgIds.length > 0) {
+    await supabase
+      .from("article_organizations")
+      .upsert(
+        allOrgIds.map((orgId) => ({ article_id: article.id, org_id: orgId })),
+        { onConflict: "article_id,org_id" }
       )
   }
 

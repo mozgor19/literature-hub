@@ -24,10 +24,25 @@ export type Database = {
         Update: { id?: string; name?: string; created_at?: string }
         Relationships: []
       }
+      organizations: {
+        Row: { id: string; name: string; created_at: string }
+        Insert: { id?: string; name: string; created_at?: string }
+        Update: { id?: string; name?: string; created_at?: string }
+        Relationships: []
+      }
+      article_organizations: {
+        Row: { article_id: string; org_id: string }
+        Insert: { article_id: string; org_id: string }
+        Update: { article_id?: string; org_id?: string }
+        Relationships: [
+          { foreignKeyName: "article_organizations_article_id_fkey"; columns: ["article_id"]; isOneToOne: false; referencedRelation: "articles"; referencedColumns: ["id"] },
+          { foreignKeyName: "article_organizations_org_id_fkey"; columns: ["org_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] }
+        ]
+      }
       articles: {
-        Row: { id: string; title: string; authors: string; year: number | null; abstract: string | null; source_url: string | null; notes: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by: string | null; added_at: string; authors_needs_review: boolean }
-        Insert: { id?: string; title: string; authors: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by?: string | null; added_at?: string; authors_needs_review?: boolean }
-        Update: { id?: string; title?: string; authors?: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; field_id?: string; drive_file_id?: string; drive_web_link?: string; drive_folder_path?: string; added_by?: string | null; added_at?: string; authors_needs_review?: boolean }
+        Row: { id: string; title: string; authors: string; year: number | null; abstract: string | null; source_url: string | null; notes: string | null; git_repo_url: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by: string | null; added_at: string; authors_needs_review: boolean }
+        Insert: { id?: string; title: string; authors: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; git_repo_url?: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by?: string | null; added_at?: string; authors_needs_review?: boolean }
+        Update: { id?: string; title?: string; authors?: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; git_repo_url?: string | null; field_id?: string; drive_file_id?: string; drive_web_link?: string; drive_folder_path?: string; added_by?: string | null; added_at?: string; authors_needs_review?: boolean }
         Relationships: [
           { foreignKeyName: "articles_field_id_fkey"; columns: ["field_id"]; isOneToOne: false; referencedRelation: "fields"; referencedColumns: ["id"] },
           { foreignKeyName: "articles_added_by_fkey"; columns: ["added_by"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
@@ -114,9 +129,14 @@ export type DBProjectArticle = Database["public"]["Tables"]["project_articles"][
 
 export type DBComment = Database["public"]["Tables"]["comments"]["Row"]
 export type DBAuthor = Database["public"]["Tables"]["authors"]["Row"]
+export type DBOrganization = Database["public"]["Tables"]["organizations"]["Row"]
 export type DBNotification = Database["public"]["Tables"]["notifications"]["Row"]
 
 export interface AuthorWithCount extends DBAuthor {
+  article_count: number
+}
+
+export interface OrgWithCount extends DBOrganization {
   article_count: number
 }
 
@@ -132,6 +152,7 @@ export interface ArticleWithRelations extends DBArticle {
   project_count: number
   comment_count: number
   normalized_authors: Pick<DBAuthor, "id" | "name">[]
+  organizations: Pick<DBOrganization, "id" | "name">[]
 }
 
 export interface CommentWithUser extends DBComment {

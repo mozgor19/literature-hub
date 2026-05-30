@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useQueryClient } from "@tanstack/react-query"
-import { ExternalLink, Copy, FolderPlus, Check, Trash2, AlertTriangle, Loader2, MessageSquare } from "lucide-react"
+import { ExternalLink, Copy, FolderPlus, Check, Trash2, AlertTriangle, Loader2, MessageSquare, GitBranch } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table"
 import { AddToProjectDialog } from "@/components/projects/AddToProjectDialog"
 import { formatYear, truncate } from "@/lib/utils"
+import { Tooltip } from "@/components/ui/tooltip"
 import type { ArticleWithRelations } from "@/types/database"
 
 interface Props {
@@ -125,6 +126,11 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                 <span className="text-xs text-muted-foreground shrink-0">{formatYear(article.year)}</span>
               </div>
               <p className="text-xs text-muted-foreground">{truncate(article.authors, 60)}</p>
+              {(article.organizations ?? []).length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {(article.organizations as { name: string }[]).map((o) => o.name).join(", ")}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">{fieldPath}</p>
               {(article.tags ?? []).length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -149,6 +155,13 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                     onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
                     <FolderPlus className="h-3.5 w-3.5" />
                   </Button>
+                  {article.git_repo_url && (
+                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Git deposu">
+                      <a href={article.git_repo_url} target="_blank" rel="noopener noreferrer">
+                        <GitBranch className="h-3.5 w-3.5" />
+                      </a>
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
                     <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -201,6 +214,11 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                         {article.title}
                       </Link>
                       <p className="text-xs text-muted-foreground">{truncate(article.authors, 60)}</p>
+                      {(article.organizations ?? []).length > 0 && (
+                        <p className="text-xs text-muted-foreground/70 italic">
+                          {(article.organizations as { name: string }[]).map((o) => o.name).join(", ")}
+                        </p>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">{formatYear(article.year)}</TableCell>
@@ -230,22 +248,39 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                       {article.project_count > 0 && (
                         <Badge variant="outline" className="text-xs px-1.5 h-6">{article.project_count}P</Badge>
                       )}
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Projeye ekle"
-                        onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
-                        <FolderPlus className="h-3.5 w-3.5" />
-                      </Button>
-                      <CopyButton text={article.drive_web_link} />
-                      <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
-                        <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      </Button>
-                      {canDeleteArticle && (
-                        <Button variant="ghost" size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Makaleyi sil"
-                          onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}>
-                          <Trash2 className="h-3.5 w-3.5" />
+                      <Tooltip content="Projeye ekle">
+                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                          onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
+                          <FolderPlus className="h-3.5 w-3.5" />
                         </Button>
+                      </Tooltip>
+                      {article.git_repo_url && (
+                        <Tooltip content="Git deposu">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                            <a href={article.git_repo_url} target="_blank" rel="noopener noreferrer">
+                              <GitBranch className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
+                        </Tooltip>
+                      )}
+                      <Tooltip content="Drive bağlantısını kopyala">
+                        <CopyButton text={article.drive_web_link} />
+                      </Tooltip>
+                      <Tooltip content="Drive'da aç">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                          <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      </Tooltip>
+                      {canDeleteArticle && (
+                        <Tooltip content="Makaleyi sil">
+                          <Button variant="ghost" size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </Tooltip>
                       )}
                     </div>
                   </TableCell>

@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
+import { Tooltip } from "@/components/ui/tooltip"
 import type { CommentWithUser } from "@/types/database"
 
 // ── XSS-safe body renderer ────────────────────────────────────────────────────
@@ -226,16 +227,17 @@ function CommentInput({
             onChange={(e) => addImages(e.target.files)}
             onClick={(e) => { (e.target as HTMLInputElement).value = "" }}
           />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            title="Görsel ekle"
-            onClick={() => fileRef.current?.click()}
-            disabled={saving}
-          >
-            <ImagePlus className="h-3.5 w-3.5" />
-          </Button>
+          <Tooltip content="Görsel ekle (maks 5 MB)">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => fileRef.current?.click()}
+              disabled={saving}
+            >
+              <ImagePlus className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
           {onCancel && (
             <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
               İptal
