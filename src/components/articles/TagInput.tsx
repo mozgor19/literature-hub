@@ -4,8 +4,6 @@ import { useState, useRef } from "react"
 import { X, Plus } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import type { DBTag } from "@/types/database"
 
 interface SelectedTag {

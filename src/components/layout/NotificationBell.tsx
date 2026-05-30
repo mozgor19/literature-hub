@@ -43,9 +43,15 @@ export function NotificationBell() {
   }
 
   useEffect(() => {
-    fetchNotifications()
-    const id = setInterval(fetchNotifications, 30_000)
-    const onFocus = () => fetchNotifications()
+    queueMicrotask(() => {
+      void fetchNotifications()
+    })
+    const id = setInterval(() => {
+      void fetchNotifications()
+    }, 30_000)
+    const onFocus = () => {
+      void fetchNotifications()
+    }
     window.addEventListener("focus", onFocus)
     return () => {
       clearInterval(id)

@@ -16,6 +16,7 @@ export async function GET(request: Request) {
   const yearMax = searchParams.get("year_max") ? Number(searchParams.get("year_max")) : null
   const q = searchParams.get("q")?.trim()
   const mine = searchParams.get("mine") === "1"
+  const readStatusFilter = searchParams.get("read_status") ?? "" // "reading" | "read" | "unread" | ""
   const page = Math.max(1, Number(searchParams.get("page") ?? 1))
   const limit = Math.min(100, Math.max(10, Number(searchParams.get("limit") ?? 25)))
   const offset = (page - 1) * limit
@@ -104,6 +105,27 @@ export async function GET(request: Request) {
   if (mine) query = query.eq("added_by", session.user.id)
   if (q) query = query.or(`title.ilike.%${q}%,authors.ilike.%${q}%,abstract.ilike.%${q}%`)
 
+  // Read-status filter — scoped strictly to requesting user
+  if (readStatusFilter === "reading" || readStatusFilter === "read") {
+    const { data: rsData } = await supabase
+      .from("article_read_status")
+      .select("article_id")
+      .eq("user_id", session.user.id)
+      .eq("status", readStatusFilter)
+    const ids = (rsData ?? []).map((r) => r.article_id)
+    query = query.in("id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"])
+  } else if (readStatusFilter === "unread") {
+    const { data: rsData } = await supabase
+      .from("article_read_status")
+      .select("article_id")
+      .eq("user_id", session.user.id)
+    const readIds = (rsData ?? []).map((r) => r.article_id)
+    if (readIds.length > 0) {
+      query = query.not("id", "in", `(${readIds.join(",")})`)
+    }
+    // If readIds is empty, all articles are unread — no extra filter needed
+  }
+
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -113,8 +135,9 @@ export async function GET(request: Request) {
   const commentCountMap: Record<string, number> = {}
   const authorMap: Record<string, Array<{ id: string; name: string }>> = {}
   const orgMap: Record<string, Array<{ id: string; name: string }>> = {}
+  const readStatusMap: Record<string, "reading" | "read"> = {}
   if (articleIds.length > 0) {
-    const [pcResult, ccResult, aaResult, aoResult] = await Promise.all([
+    const [pcResult, ccResult, aaResult, aoResult, rsResult] = await Promise.all([
       supabase.from("project_articles").select("article_id").in("article_id", articleIds),
       supabase.from("comments").select("article_id").in("article_id", articleIds).eq("is_deleted", false),
       supabase
@@ -125,6 +148,11 @@ export async function GET(request: Request) {
       supabase
         .from("article_organizations")
         .select("article_id, org:organizations!org_id(id, name)")
+        .in("article_id", articleIds),
+      supabase
+        .from("article_read_status")
+        .select("article_id, status")
+        .eq("user_id", session.user.id)
         .in("article_id", articleIds),
     ])
     ;(pcResult.data ?? []).forEach((row) => {
@@ -145,6 +173,9 @@ export async function GET(request: Request) {
       if (!orgMap[row.article_id]) orgMap[row.article_id] = []
       orgMap[row.article_id].push({ id: o.id, name: o.name })
     })
+    ;(rsResult.data ?? []).forEach((row) => {
+      readStatusMap[row.article_id] = row.status as "reading" | "read"
+    })
   }
 
   const articles = (data ?? []).map((a) => ({
@@ -154,9 +185,29 @@ export async function GET(request: Request) {
     comment_count: commentCountMap[a.id] ?? 0,
     normalized_authors: authorMap[a.id] ?? [],
     organizations: orgMap[a.id] ?? [],
+    my_read_status: (readStatusMap[a.id] ?? "unread") as "unread" | "reading" | "read",
   }))
 
-  return NextResponse.json({ articles, total: count ?? 0, page, limit })
+  const [totalArticlesResult, allReadStatusResult] = await Promise.all([
+    supabase.from("articles").select("id", { count: "exact", head: true }),
+    supabase.from("article_read_status").select("status").eq("user_id", session.user.id),
+  ])
+  const readingCount = (allReadStatusResult.data ?? []).filter((row) => row.status === "reading").length
+  const readCount = (allReadStatusResult.data ?? []).filter((row) => row.status === "read").length
+  const articleCount = totalArticlesResult.count ?? 0
+  const readStatusCounts = {
+    unread: Math.max(0, articleCount - readingCount - readCount),
+    reading: readingCount,
+    read: readCount,
+  }
+
+  return NextResponse.json({
+    articles,
+    total: count ?? 0,
+    page,
+    limit,
+    read_status_counts: readStatusCounts,
+  })
 }
 
 export async function POST(request: Request) {

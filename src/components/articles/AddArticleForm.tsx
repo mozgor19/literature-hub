@@ -4,13 +4,13 @@ import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Upload, Plus, Loader2, Sparkles, RefreshCw } from "lucide-react"
+import { Upload, Plus, Loader2, Sparkles, RefreshCw, AlertTriangle, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { TagInput } from "./TagInput"
 import { AuthorInput, parseAuthorsText } from "./AuthorInput"
@@ -19,6 +19,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import type { FieldWithChildren } from "@/types/database"
 import type { SelectedAuthor } from "./AuthorInput"
 import type { SelectedOrg } from "./OrgInput"
+import type { DuplicateMatch } from "@/app/api/articles/check-duplicate/route"
 
 // Flatten a recursive field tree into a list with readable path labels
 function flattenFields(
@@ -90,6 +91,8 @@ const VERCEL_SAFE_PDF_LIMIT_MB = 4.5
 export function AddArticleForm() {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false)
+  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateMatch[] | null>(null)
 
   // Form fields
   const [title, setTitle] = useState("")
@@ -308,22 +311,10 @@ export function AddArticleForm() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!title.trim()) {
-      toast.error("Başlık zorunludur")
-      return
-    }
-    if (authorList.length === 0) {
-      toast.error("En az bir yazar ekleyin")
-      return
-    }
-    if (!selectedFieldId) {
-      toast.error("Lütfen bir alan seçin")
-      return
-    }
-    if (!file) {
+  // Performs the actual POST to /api/articles — called after duplicate check passes.
+  const doSubmit = async () => {
+    const selectedFile = file
+    if (!selectedFile) {
       toast.error("PDF dosyası zorunludur")
       return
     }
@@ -351,7 +342,7 @@ export function AddArticleForm() {
     formData.append("org_ids", JSON.stringify(existingOrgIds))
     formData.append("new_orgs", JSON.stringify(newOrgNames))
     if (gitRepoUrl.trim()) formData.append("git_repo_url", gitRepoUrl.trim())
-    formData.append("file", file)
+    formData.append("file", selectedFile)
 
     try {
       const res = await fetch("/api/articles", { method: "POST", body: formData })
@@ -378,6 +369,37 @@ export function AddArticleForm() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!title.trim()) { toast.error("Başlık zorunludur"); return }
+    if (authorList.length === 0) { toast.error("En az bir yazar ekleyin"); return }
+    if (!selectedFieldId) { toast.error("Lütfen bir alan seçin"); return }
+    if (!file) { toast.error("PDF dosyası zorunludur"); return }
+
+    // ── Pre-flight: duplicate detection ─────────────────────────────────────
+    setCheckingDuplicates(true)
+    try {
+      const params = new URLSearchParams()
+      if (title.trim()) params.set("title", title.trim())
+      if (sourceUrl.trim()) params.set("source_url", sourceUrl.trim())
+      const res = await fetch(`/api/articles/check-duplicate?${params}`)
+      if (res.ok) {
+        const { matches } = await res.json() as { matches: DuplicateMatch[] }
+        if (matches.length > 0) {
+          setDuplicateWarning(matches)
+          return // pause — user must choose
+        }
+      }
+    } catch {
+      // Ignore network errors — let the user proceed
+    } finally {
+      setCheckingDuplicates(false)
+    }
+
+    await doSubmit()
   }
 
   return (
@@ -642,12 +664,69 @@ export function AddArticleForm() {
           >
             İptal
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Yükleniyor..." : "Makale Ekle"}
+          <Button type="submit" disabled={submitting || checkingDuplicates}>
+            {(submitting || checkingDuplicates) && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? "Yükleniyor..." : checkingDuplicates ? "Kontrol ediliyor…" : "Makale Ekle"}
           </Button>
         </div>
       </form>
+
+      {/* Duplicate warning dialog — does NOT block submit; user decides */}
+      <Dialog
+        open={duplicateWarning !== null}
+        onOpenChange={(open) => { if (!open) setDuplicateWarning(null) }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+              Olası tekrar tespit edildi
+            </DialogTitle>
+            <DialogDescription>
+              Kütüphanede buna benzer makale(ler) mevcut. Yine de ekleyebilirsiniz.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {(duplicateWarning ?? []).map((m) => (
+              <div key={m.id} className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1">
+                <div className="font-medium leading-snug">{m.title}</div>
+                <div className="text-xs text-muted-foreground">{m.authors} {m.year ? `· ${m.year}` : ""}</div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${
+                    m.match_type === "doi"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}>
+                    {m.match_type === "doi" ? "Aynı DOI" : `Benzer başlık (${Math.round(m.similarity * 100)}%)`}
+                  </span>
+                  <a
+                    href={`/articles/${m.id}`}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Makaleyi aç
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDuplicateWarning(null)}>
+              İptal
+            </Button>
+            <Button
+              onClick={async () => {
+                setDuplicateWarning(null)
+                await doSubmit()
+              }}
+              disabled={submitting}
+            >
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Yine de ekle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Inline field creation dialog */}
       <Dialog open={showNewFieldDialog} onOpenChange={setShowNewFieldDialog}>

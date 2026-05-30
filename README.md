@@ -14,6 +14,9 @@ Araştırma grubunun ortak makale havuzu. Makaleleri Google Drive'da PDF olarak 
 - **Yazarlar**: Makale yazar bilgisi ayrı alan olarak saklanır.
 - **Git Repo**: Makaleye ilişkilendirilmiş kaynak kodu deposu için Git repo URL alanı.
 - **Yorumlar**: Her makale detay sayfasında yorum yapılabilir; yorum sayısı liste görünümünde rozet olarak gösterilir.
+- **BibTeX dışa aktarım**: Liste filtreleriyle eşleşen makaleler veya tek makale BibTeX olarak dışa aktarılabilir.
+- **Olası tekrar uyarıları**: Yeni makale eklerken aynı DOI veya yüksek benzerlikte başlık bulunursa kullanıcı Türkçe uyarı görür; ekleme engellenmez.
+- **Kişisel okuma durumu**: Her kullanıcı makaleleri kendisi için `Okunmadı`, `Okunuyor` veya `Okundu` olarak işaretleyebilir.
 
 ## Arayüz Özellikleri
 
@@ -21,7 +24,15 @@ Araştırma grubunun ortak makale havuzu. Makaleleri Google Drive'da PDF olarak 
 - **Tooltip**: Tüm ikon butonların üzerine gelindiğinde açıklama gösterilir (klavye erişilebilir).
 - **İki aşamalı silme**: Makale silme işlemi ikinci bir onay adımı gerektirir; geri alınamaz işlem uyarısı gösterilir.
 - **Proje sayacı**: Makalenin kaç projede yer aldığı liste görünümünde rozet olarak gösterilir.
+- **Okuma durumu filtresi**: Makale listesinde kişisel okuma durumu filtresi diğer filtrelerle birlikte kullanılabilir.
+- **Admin tekrar raporu**: Admin menüsündeki "Olası Tekrarlar" sayfası olası tekrar gruplarını yalnızca raporlar; silme işlemi mevcut makale silme yetki kontrollerinden geçer.
 - **PWA**: Tarayıcıdan masaüstüne veya ana ekrana yüklenebilir (Progressive Web App desteği).
+
+## Kullanım Notları
+
+- **BibTeX kapsamları**: Makale detayındaki BibTeX butonu yalnızca açık makaleyi dışa aktarır. Makale listesindeki "BibTeX Dışa Aktar" butonu aktif arama, alan, etiket, yazar, kuruluş, yıl ve okuma durumu filtreleriyle eşleşen sonuçları dışa aktarır.
+- **Tekrar uyarıları**: Ekleme formu kayıt öncesinde DOI'yi küçük harfe çevirip `https://doi.org/` / `http://doi.org/` / `doi:` öneklerini temizleyerek güçlü eşleşme arar. DOI yoksa normalize edilmiş başlık benzerliğiyle yumuşak eşleşme arar. Eşleşme varsa "Yine de ekle" veya "İptal" seçilebilir; otomatik silme veya engelleme yoktur.
+- **Okuma durumu kişiseldir**: Okuma durumu ortak makale kaydında tutulmaz; `article_read_status` tablosunda kullanıcı-makale bazında saklanır. Satır yoksa durum `Okunmadı` kabul edilir. Admin dahil hiçbir kullanıcı başka bir kullanıcının okuma durumunu düzenlemez.
 
 ## Kurulum
 
@@ -97,6 +108,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=   # Supabase anon key
 SUPABASE_SERVICE_ROLE_KEY=  # Supabase service role key (sunucu taraflı)
 ```
 
+Bu özellikler için yeni ortam değişkeni eklenmedi. Admin tekrar raporu mevcut admin yetki modeliyle çalışır.
+
 ---
 
 ## Vercel'e Deploy
@@ -124,8 +137,15 @@ Bu README varsayılan olarak Supabase'i anlatır. Sheets alternatifi ileriki bir
 
 ## Roadmap
 
-Şu an gerçekleştirilmemiş, ancak veri modeli değişikliği gerektirmeyen özellikler:
+Tamamlananlar:
 
-- **Gemini/LLM Analizi**: Seçili makale kümesi üzerinde literatür analizi.
-- **Toplu İndirme**: Proje/filtre sonuçlarını yerel çevrimdışı inceleme için ZIP olarak indirme.
-- **Çalışma Grubu Notları**: Aylık toplantı notları ve alan yönelim katmanı.
+- [x] **BibTeX dışa aktarım**: Tek makale ve filtrelenmiş liste kapsamları.
+- [x] **Olası tekrar tespiti**: DOI ve başlık benzerliği uyarıları, admin rapor görünümü.
+- [x] **Kişisel okuma durumu**: Kullanıcı bazlı durum kontrolü, filtre ve sayaçlar.
+
+Gelecek geliştirmeler:
+
+- **Tarayıcı eklentisi**: Web'den hızlı makale/PDF ekleme.
+- **Uygulama içi PDF anotasyonu**: PDF üzerinde not alma ve işaretleme.
+- **Atıf sayıları**: Makaleler için atıf metriklerini görüntüleme.
+- **Öneriler**: Havuzdaki ilgi alanlarına göre makale önerileri.

@@ -111,6 +111,15 @@ export type Database = {
           { foreignKeyName: "notifications_actor_id_fkey"; columns: ["actor_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
         ]
       }
+      article_read_status: {
+        Row: { user_id: string; article_id: string; status: string; updated_at: string }
+        Insert: { user_id: string; article_id: string; status: string; updated_at?: string }
+        Update: { user_id?: string; article_id?: string; status?: string; updated_at?: string }
+        Relationships: [
+          { foreignKeyName: "article_read_status_user_id_fkey"; columns: ["user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] },
+          { foreignKeyName: "article_read_status_article_id_fkey"; columns: ["article_id"]; isOneToOne: false; referencedRelation: "articles"; referencedColumns: ["id"] }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -145,6 +154,8 @@ export interface NotificationWithDetails extends DBNotification {
   article: Pick<DBArticle, "id" | "title"> | null
 }
 
+export type ReadStatus = "unread" | "reading" | "read"
+
 export interface ArticleWithRelations extends DBArticle {
   tags: DBTag[]
   field: (DBField & { parent?: DBField | null }) | null
@@ -153,6 +164,7 @@ export interface ArticleWithRelations extends DBArticle {
   comment_count: number
   normalized_authors: Pick<DBAuthor, "id" | "name">[]
   organizations: Pick<DBOrganization, "id" | "name">[]
+  my_read_status: ReadStatus
 }
 
 export interface CommentWithUser extends DBComment {

@@ -16,6 +16,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { AddToProjectDialog } from "@/components/projects/AddToProjectDialog"
+import { ReadStatusButton } from "@/components/articles/ReadStatusButton"
 import { formatYear, truncate } from "@/lib/utils"
 import { Tooltip } from "@/components/ui/tooltip"
 import type { ArticleWithRelations } from "@/types/database"
@@ -153,6 +154,7 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                   </Badge>
                 )}
                 <div className="ml-auto flex items-center gap-1">
+                  <ReadStatusButton articleId={article.id} initialStatus={article.my_read_status} />
                   <Tooltip content="Projeye ekle">
                     <Button variant="ghost" size="icon" className="h-7 w-7"
                       onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
@@ -258,6 +260,7 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                       {article.project_count > 0 && (
                         <Badge variant="outline" className="text-xs px-1.5 h-6">{article.project_count}P</Badge>
                       )}
+                      <ReadStatusButton articleId={article.id} initialStatus={article.my_read_status} />
                       <Tooltip content="Projeye ekle">
                         <Button variant="ghost" size="icon" className="h-7 w-7"
                           onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>

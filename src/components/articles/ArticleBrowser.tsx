@@ -17,6 +17,11 @@ interface ArticlesResponse {
   total: number
   page: number
   limit: number
+  read_status_counts?: {
+    unread: number
+    reading: number
+    read: number
+  }
 }
 
 export function ArticleBrowser() {
@@ -34,17 +39,21 @@ export function ArticleBrowser() {
   const yearMin = searchParams.get("year_min") ?? ""
   const yearMax = searchParams.get("year_max") ?? ""
   const q = searchParams.get("q") ?? ""
+  const readStatus = searchParams.get("read_status") ?? ""
   const page = Math.max(1, Number(searchParams.get("page") ?? 1))
 
   const { data, isLoading } = useQuery<ArticlesResponse>({
-    queryKey: ["articles", { fieldId, tags, yearMin, yearMax, q, page }],
+    queryKey: ["articles", { fieldId, tags, authors, orgs, yearMin, yearMax, q, readStatus, page }],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (fieldId) params.set("field_id", fieldId)
       if (tags) params.set("tags", tags)
+      if (authors) params.set("authors", authors)
+      if (orgs) params.set("orgs", orgs)
       if (yearMin) params.set("year_min", yearMin)
       if (yearMax) params.set("year_max", yearMax)
       if (q) params.set("q", q)
+      if (readStatus) params.set("read_status", readStatus)
       params.set("page", String(page))
       const res = await fetch(`/api/articles?${params}`)
       if (!res.ok) throw new Error("Makaleler yüklenemedi")
@@ -72,6 +81,7 @@ export function ArticleBrowser() {
         if (yearMin) params.set("year_min", yearMin)
         if (yearMax) params.set("year_max", yearMax)
         if (q) params.set("q", q)
+        if (readStatus) params.set("read_status", readStatus)
         params.set("limit", "100")
         params.set("page", String(p++))
         const res = await fetch(`/api/articles?${params}`)
@@ -88,7 +98,8 @@ export function ArticleBrowser() {
     }
   }
 
-  const hasFilters = !!(fieldId || tags || yearMin || yearMax || q)
+  const hasFilters = !!(fieldId || tags || authors || orgs || yearMin || yearMax || q || readStatus)
+  const readStatusCounts = data?.read_status_counts
 
   return (
     <div>
@@ -114,7 +125,12 @@ export function ArticleBrowser() {
           <ArticleFilters />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-end mb-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+            {readStatusCounts && (
+              <p className="text-xs text-muted-foreground">
+                Okuma durumum: {readStatusCounts.unread} okunmadı · {readStatusCounts.reading} okunuyor · {readStatusCounts.read} okundu
+              </p>
+            )}
             <Button
               variant="outline"
               size="sm"

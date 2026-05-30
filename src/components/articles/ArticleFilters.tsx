@@ -37,6 +37,7 @@ export function ArticleFilters() {
   const orgsParam = searchParams.get("orgs") ?? ""
   const yearMin = searchParams.get("year_min") ?? ""
   const yearMax = searchParams.get("year_max") ?? ""
+  const readStatus = searchParams.get("read_status") ?? ""
 
   const selectedTagIds = tagsParam ? tagsParam.split(",").filter(Boolean) : []
   const selectedAuthorIds = authorsParam ? authorsParam.split(",").filter(Boolean) : []
@@ -103,7 +104,11 @@ export function ArticleFilters() {
 
   const toggleTag = (tagId: string) => {
     const current = new Set(selectedTagIds)
-    current.has(tagId) ? current.delete(tagId) : current.add(tagId)
+    if (current.has(tagId)) {
+      current.delete(tagId)
+    } else {
+      current.add(tagId)
+    }
     updateParam("tags", [...current].join(","))
   }
 
@@ -133,7 +138,7 @@ export function ArticleFilters() {
 
   const clearAll = () => router.push(pathname)
 
-  const hasFilters = q || fieldId || tagsParam || authorsParam || orgsParam || yearMin || yearMax
+  const hasFilters = q || fieldId || tagsParam || authorsParam || orgsParam || yearMin || yearMax || readStatus
 
   // Find label for currently selected field
   const selectedFieldLabel = flatFields.find((f) => f.id === fieldId)?.label?.trim() ?? ""
@@ -355,6 +360,32 @@ export function ArticleFilters() {
             {selectedTagIds.length} etiket seçili (VE filtresi)
           </p>
         )}
+      </div>
+
+      <Separator />
+
+      {/* Read status filter */}
+      <div className="space-y-2">
+        <Label>Okuma Durumu</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              { value: "", label: "Tümü" },
+              { value: "unread", label: "Okunmadı" },
+              { value: "reading", label: "Okunuyor" },
+              { value: "read", label: "Okundu" },
+            ] as const
+          ).map(({ value, label }) => (
+            <button key={value} type="button" onClick={() => updateParam("read_status", value)}>
+              <Badge
+                variant={readStatus === value ? "default" : "outline"}
+                className="cursor-pointer text-xs hover:opacity-80 transition-opacity"
+              >
+                {label}
+              </Badge>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Clear filters */}

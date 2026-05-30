@@ -10,6 +10,8 @@ import { ArrowLeft, ExternalLink, Calendar, User, FolderOpen, GitBranch, Buildin
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 import { BibtexArticleButton } from "@/components/bibtex/BibtexArticleButton"
+import { ReadStatusButton } from "@/components/articles/ReadStatusButton"
+import type { ReadStatus } from "@/types/database"
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -37,6 +39,18 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
 
   const tags = (article.article_tags ?? []).map((at: { tags: unknown }) => at.tags).filter(Boolean) as Array<{ id: string; name: string }>
   const orgs = (article.article_organizations ?? []).map((ao: { organizations: unknown }) => ao.organizations).filter(Boolean) as Array<{ id: string; name: string }>
+
+  // Fetch this user's read status for the article (server-side, scoped to user)
+  let myReadStatus: ReadStatus = "unread"
+  if (session?.user?.id) {
+    const { data: rs } = await supabase
+      .from("article_read_status")
+      .select("status")
+      .eq("user_id", session.user.id)
+      .eq("article_id", id)
+      .single()
+    myReadStatus = (rs?.status as ReadStatus) ?? "unread"
+  }
   const field = article.field as { name: string; parent_id: string | null } | null
   const addedBy = article.added_by_user as { name: string | null; email: string } | null
 
@@ -107,7 +121,7 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
           <Button asChild size="sm">
             <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              Drive'da Aç
+              Drive&apos;da Aç
             </a>
           </Button>
           {article.source_url && (
@@ -135,6 +149,9 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
               organizations: orgs,
             }}
           />
+          {session?.user && (
+            <ReadStatusButton articleId={article.id} initialStatus={myReadStatus} />
+          )}
         </div>
       </div>
 

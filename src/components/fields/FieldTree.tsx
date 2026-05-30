@@ -156,7 +156,11 @@ export function FieldTree() {
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }
@@ -289,7 +293,7 @@ export function FieldTree() {
             autoFocus
           />
           <p className="text-xs text-muted-foreground">
-            Google Drive'da otomatik olarak bir klasör oluşturulacak.
+            Google Drive&apos;da otomatik olarak bir klasör oluşturulacak.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>İptal</Button>
