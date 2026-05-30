@@ -10,6 +10,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const fieldId = searchParams.get("field_id")
   const tagIds = searchParams.get("tags")?.split(",").filter(Boolean) ?? []
+  const authorIds = searchParams.get("authors")?.split(",").filter(Boolean) ?? []
   const yearMin = searchParams.get("year_min") ? Number(searchParams.get("year_min")) : null
   const yearMax = searchParams.get("year_max") ? Number(searchParams.get("year_max")) : null
   const q = searchParams.get("q")?.trim()
@@ -30,11 +31,28 @@ export async function GET(request: Request) {
     tagFilteredIds = [...sets.reduce((a, b) => new Set([...a].filter((x) => b.has(x))), sets[0] ?? new Set<string>())]
   }
 
-  // If a parent field is filtered, include its children too
+  // Author AND filter: same intersection semantics as tags
+  let authorFilteredIds: string[] | null = null
+  if (authorIds.length > 0) {
+    const authorResults = await Promise.all(
+      authorIds.map((authorId) =>
+        supabase.from("article_authors").select("article_id").eq("author_id", authorId)
+      )
+    )
+    const sets = authorResults.map((r) => new Set((r.data ?? []).map((t) => t.article_id)))
+    authorFilteredIds = [...sets.reduce((a, b) => new Set([...a].filter((x) => b.has(x))), sets[0] ?? new Set<string>())]
+  }
+
+  // Field filter: include all descendants at any depth (recursive walk)
   let fieldIds: string[] | null = null
   if (fieldId) {
-    const { data: children } = await supabase.from("fields").select("id").eq("parent_id", fieldId)
-    fieldIds = [fieldId, ...(children ?? []).map((f) => f.id)]
+    async function collectDescendants(id: string): Promise<string[]> {
+      const { data: children } = await supabase.from("fields").select("id").eq("parent_id", id)
+      const childIds = (children ?? []).map((f) => f.id)
+      const grandchildSets = await Promise.all(childIds.map(collectDescendants))
+      return [id, ...childIds, ...grandchildSets.flat()]
+    }
+    fieldIds = await collectDescendants(fieldId)
   }
 
   let query = supabase
@@ -56,6 +74,12 @@ export async function GET(request: Request) {
       tagFilteredIds.length > 0 ? tagFilteredIds : ["00000000-0000-0000-0000-000000000000"]
     )
   }
+  if (authorFilteredIds !== null) {
+    query = query.in(
+      "id",
+      authorFilteredIds.length > 0 ? authorFilteredIds : ["00000000-0000-0000-0000-000000000000"]
+    )
+  }
   if (yearMin !== null) query = query.gte("year", yearMin)
   if (yearMax !== null) query = query.lte("year", yearMax)
   if (mine) query = query.eq("added_by", session.user.id)
@@ -64,20 +88,32 @@ export async function GET(request: Request) {
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Fetch project counts and comment counts in parallel
+  // Fetch project counts, comment counts, and normalized authors in parallel
   const articleIds = (data ?? []).map((a) => a.id)
   const projectCountMap: Record<string, number> = {}
   const commentCountMap: Record<string, number> = {}
+  const authorMap: Record<string, Array<{ id: string; name: string }>> = {}
   if (articleIds.length > 0) {
-    const [pcResult, ccResult] = await Promise.all([
+    const [pcResult, ccResult, aaResult] = await Promise.all([
       supabase.from("project_articles").select("article_id").in("article_id", articleIds),
       supabase.from("comments").select("article_id").in("article_id", articleIds).eq("is_deleted", false),
+      supabase
+        .from("article_authors")
+        .select("article_id, position, author:authors!author_id(id, name)")
+        .in("article_id", articleIds)
+        .order("position"),
     ])
     ;(pcResult.data ?? []).forEach((row) => {
       projectCountMap[row.article_id] = (projectCountMap[row.article_id] ?? 0) + 1
     })
     ;(ccResult.data ?? []).forEach((row) => {
       commentCountMap[row.article_id] = (commentCountMap[row.article_id] ?? 0) + 1
+    })
+    ;(aaResult.data ?? []).forEach((row) => {
+      const a = row.author as { id: string; name: string } | null
+      if (!a) return
+      if (!authorMap[row.article_id]) authorMap[row.article_id] = []
+      authorMap[row.article_id].push({ id: a.id, name: a.name })
     })
   }
 
@@ -86,6 +122,7 @@ export async function GET(request: Request) {
     tags: (a.article_tags ?? []).map((at: { tags: unknown }) => at.tags).filter(Boolean),
     project_count: projectCountMap[a.id] ?? 0,
     comment_count: commentCountMap[a.id] ?? 0,
+    normalized_authors: authorMap[a.id] ?? [],
   }))
 
   return NextResponse.json({ articles, total: count ?? 0, page, limit })
@@ -98,7 +135,6 @@ export async function POST(request: Request) {
   const formData = await request.formData()
   const file = formData.get("file") as File | null
   const title = formData.get("title") as string
-  const authors = formData.get("authors") as string
   const year = formData.get("year") ? Number(formData.get("year")) : null
   const abstract = (formData.get("abstract") as string) || null
   const source_url = (formData.get("source_url") as string) || null
@@ -106,9 +142,15 @@ export async function POST(request: Request) {
   const field_id = formData.get("field_id") as string
   const tagIds = JSON.parse((formData.get("tag_ids") as string) || "[]") as string[]
   const newTagNames = JSON.parse((formData.get("new_tags") as string) || "[]") as string[]
+  // Normalized authors: existing IDs + new names
+  const existingAuthorIds = JSON.parse((formData.get("author_ids") as string) || "[]") as string[]
+  const newAuthorNames = JSON.parse((formData.get("new_authors") as string) || "[]") as string[]
 
-  if (!title?.trim() || !authors?.trim() || !field_id) {
-    return NextResponse.json({ error: "Başlık, yazarlar ve alan zorunludur" }, { status: 400 })
+  if (!title?.trim() || !field_id) {
+    return NextResponse.json({ error: "Başlık ve alan zorunludur" }, { status: 400 })
+  }
+  if (existingAuthorIds.length === 0 && newAuthorNames.length === 0) {
+    return NextResponse.json({ error: "En az bir yazar ekleyin" }, { status: 400 })
   }
   if (!file) {
     return NextResponse.json({ error: "PDF dosyası zorunludur" }, { status: 400 })
@@ -202,12 +244,37 @@ export async function POST(request: Request) {
     allTagIds = [...allTagIds, ...(createdTags ?? []).map((t) => t.id)]
   }
 
+  // Upsert new authors and collect all author IDs in position order
+  let allAuthorIds = [...existingAuthorIds]
+  if (newAuthorNames.length > 0) {
+    const { data: upserted, error: authorErr } = await supabase
+      .from("authors")
+      .upsert(
+        newAuthorNames.map((name) => ({ name: name.trim() })),
+        { onConflict: "name" }
+      )
+      .select("id, name")
+    if (authorErr) {
+      return NextResponse.json({ error: `Yazarlar kaydedilemedi: ${authorErr.message}` }, { status: 500 })
+    }
+    // Preserve the order submitted by the client: existing first, then new
+    allAuthorIds = [...allAuthorIds, ...(upserted ?? []).map((a) => a.id)]
+  }
+
+  // Derive the free-text authors string (reading order) for backward compat + display
+  const { data: authorRows } = await supabase
+    .from("authors")
+    .select("id, name")
+    .in("id", allAuthorIds)
+  const authorNameById = Object.fromEntries((authorRows ?? []).map((a) => [a.id, a.name]))
+  const authorsText = allAuthorIds.map((id) => authorNameById[id] ?? "").filter(Boolean).join(", ")
+
   // Insert article row
   const { data: article, error: articleErr } = await supabase
     .from("articles")
     .insert({
       title: title.trim(),
-      authors: authors.trim(),
+      authors: authorsText,
       year,
       abstract: abstract || null,
       source_url: source_url || null,
@@ -225,6 +292,14 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: `Makale kaydedilemedi: ${articleErr.message}. Drive dosyası yüklendi (ID: ${driveFileId}).` },
       { status: 500 }
+    )
+  }
+
+  // Link authors to article (position = index in allAuthorIds)
+  if (allAuthorIds.length > 0) {
+    await supabase.from("article_authors").upsert(
+      allAuthorIds.map((authorId, position) => ({ article_id: article.id, author_id: authorId, position })),
+      { onConflict: "article_id,author_id" }
     )
   }
 

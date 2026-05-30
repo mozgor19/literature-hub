@@ -4,7 +4,10 @@ import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
-import { FolderOpen, FolderClosed, Plus, Loader2, ChevronDown, ChevronRight, Trash2 } from "lucide-react"
+import {
+  FolderOpen, FolderClosed, Plus, Loader2,
+  ChevronDown, ChevronRight, Trash2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,10 +17,126 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import type { FieldWithChildren } from "@/types/database"
 
+// ── Recursive field node ──────────────────────────────────────────────────────
+
+function FieldNode({
+  field,
+  depth,
+  currentUserId,
+  isAdminUser,
+  expanded,
+  toggleExpand,
+  onCreateChild,
+  onDelete,
+  deletingId,
+}: {
+  field: FieldWithChildren
+  depth: number
+  currentUserId: string | undefined
+  isAdminUser: boolean
+  expanded: Set<string>
+  toggleExpand: (id: string) => void
+  onCreateChild: (parentId: string) => void
+  onDelete: (id: string, name: string) => void
+  deletingId: string | null
+}) {
+  const isExpanded = expanded.has(field.id)
+  const hasChildren = field.children.length > 0
+  const canDelete = isAdminUser || field.created_by === currentUserId
+
+  return (
+    <div>
+      {/* Row */}
+      <div
+        className="flex items-center gap-2 px-4 py-2.5 hover:bg-accent/30 transition-colors"
+        style={{ paddingLeft: `${16 + depth * 20}px` }}
+      >
+        <button
+          type="button"
+          className="flex items-center gap-2 flex-1 text-left min-w-0"
+          onClick={() => hasChildren && toggleExpand(field.id)}
+        >
+          {hasChildren ? (
+            isExpanded
+              ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          ) : (
+            <span className="w-4 shrink-0" />
+          )}
+          {hasChildren
+            ? <FolderOpen className="h-4 w-4 text-primary shrink-0" />
+            : <FolderClosed className="h-4 w-4 text-muted-foreground shrink-0" />}
+          <span className={`text-sm truncate ${depth === 0 ? "font-medium" : ""}`}>
+            {field.name}
+          </span>
+          {field.children.length > 0 && (
+            <span className="text-xs text-muted-foreground ml-1 hidden sm:inline">
+              ({field.children.length})
+            </span>
+          )}
+        </button>
+
+        {field.drive_folder_id && (
+          <span className="text-xs text-muted-foreground hidden lg:inline shrink-0">Drive ✓</span>
+        )}
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1 text-xs h-7 shrink-0"
+          onClick={() => onCreateChild(field.id)}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Alt Alan</span>
+        </Button>
+
+        {canDelete && field.children.length === 0 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+            title="Alanı sil"
+            disabled={deletingId === field.id}
+            onClick={() => onDelete(field.id, field.name)}
+          >
+            {deletingId === field.id
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Trash2 className="h-3.5 w-3.5" />}
+          </Button>
+        )}
+      </div>
+
+      {/* Recursive children */}
+      {isExpanded && hasChildren && (
+        <div className="border-l border-border/40 ml-6">
+          {field.children.map((child) => (
+            <FieldNode
+              key={child.id}
+              field={child}
+              depth={depth + 1}
+              currentUserId={currentUserId}
+              isAdminUser={isAdminUser}
+              expanded={expanded}
+              toggleExpand={toggleExpand}
+              onCreateChild={onCreateChild}
+              onDelete={onDelete}
+              deletingId={deletingId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function FieldTree() {
   const queryClient = useQueryClient()
   const { data: session } = useSession()
   const isAdminUser = session?.user?.isAdmin ?? false
+  const currentUserId = session?.user?.id
+
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [showDialog, setShowDialog] = useState(false)
   const [newFieldName, setNewFieldName] = useState("")
@@ -44,6 +163,38 @@ export function FieldTree() {
     setShowDialog(true)
   }
 
+  // Helper: find a field by ID anywhere in the tree
+  function findField(nodes: FieldWithChildren[], id: string): FieldWithChildren | undefined {
+    for (const n of nodes) {
+      if (n.id === id) return n
+      const found = findField(n.children, id)
+      if (found) return found
+    }
+    return undefined
+  }
+
+  const handleCreate = async () => {
+    if (!newFieldName.trim()) return
+    setCreating(true)
+    try {
+      const res = await fetch("/api/fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newFieldName.trim(), parent_id: newFieldParentId }),
+      })
+      const data = await res.json() as { error?: string; name?: string }
+      if (!res.ok) throw new Error(data.error)
+      await queryClient.invalidateQueries({ queryKey: ["fields"] })
+      if (newFieldParentId) setExpanded((prev) => new Set([...prev, newFieldParentId!]))
+      setShowDialog(false)
+      toast.success(`"${data.name}" oluşturuldu`)
+    } catch (err) {
+      toast.error(String(err))
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`"${name}" alanını silmek istediğinize emin misiniz? Drive klasörü de silinecek.`)) return
     setDeletingId(id)
@@ -61,28 +212,6 @@ export function FieldTree() {
     }
   }
 
-  const handleCreate = async () => {
-    if (!newFieldName.trim()) return
-    setCreating(true)
-    try {
-      const res = await fetch("/api/fields", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newFieldName.trim(), parent_id: newFieldParentId }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      await queryClient.invalidateQueries({ queryKey: ["fields"] })
-      if (newFieldParentId) setExpanded((prev) => new Set([...prev, newFieldParentId!]))
-      setShowDialog(false)
-      toast.success(`"${data.name}" oluşturuldu`)
-    } catch (err) {
-      toast.error(String(err))
-    } finally {
-      setCreating(false)
-    }
-  }
-
   if (isLoading) {
     return (
       <div className="space-y-2">
@@ -92,6 +221,11 @@ export function FieldTree() {
       </div>
     )
   }
+
+  // Parent field name for dialog
+  const parentLabel = newFieldParentId
+    ? (findField(fields, newFieldParentId)?.name ?? "")
+    : null
 
   return (
     <>
@@ -107,101 +241,22 @@ export function FieldTree() {
             </CardContent>
           </Card>
         ) : (
-          fields.map((field) => {
-            const isExpanded = expanded.has(field.id)
-            return (
-              <div key={field.id} className="rounded-xl border overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3 bg-card hover:bg-accent/30 transition-colors">
-                  <button
-                    type="button"
-                    onClick={() => field.children.length > 0 && toggleExpand(field.id)}
-                    className="flex items-center gap-2 flex-1 text-left"
-                  >
-                    {field.children.length > 0 ? (
-                      <>
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        )}
-                        <FolderOpen className="h-4 w-4 text-primary" />
-                      </>
-                    ) : (
-                      <>
-                        <span className="w-4" />
-                        <FolderClosed className="h-4 w-4 text-muted-foreground" />
-                      </>
-                    )}
-                    <span className="font-medium text-sm">{field.name}</span>
-                    <span className="text-xs text-muted-foreground ml-1">
-                      ({field.children.length} alt alan)
-                    </span>
-                  </button>
-
-                  {field.drive_folder_id && (
-                    <span className="text-xs text-muted-foreground hidden sm:inline">
-                      Drive ✓
-                    </span>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1 text-xs"
-                    onClick={() => openCreateDialog(field.id)}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Alt Alan
-                  </Button>
-                  {isAdminUser && field.children.length === 0 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      title="Alanı sil"
-                      disabled={deletingId === field.id}
-                      onClick={() => handleDelete(field.id, field.name)}
-                    >
-                      {deletingId === field.id
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : <Trash2 className="h-3.5 w-3.5" />}
-                    </Button>
-                  )}
-                </div>
-
-                {isExpanded && field.children.length > 0 && (
-                  <div className="border-t bg-muted/30">
-                    {field.children.map((child) => (
-                      <div
-                        key={child.id}
-                        className="flex items-center gap-2 px-4 py-2.5 pl-10 border-b last:border-0 hover:bg-accent/30 transition-colors"
-                      >
-                        <FolderClosed className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-sm flex-1">{child.name}</span>
-                        {child.drive_folder_id && (
-                          <span className="text-xs text-muted-foreground">Drive ✓</span>
-                        )}
-                        {isAdminUser && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                            title="Alt alanı sil"
-                            disabled={deletingId === child.id}
-                            onClick={() => handleDelete(child.id, child.name)}
-                          >
-                            {deletingId === child.id
-                              ? <Loader2 className="h-3 w-3 animate-spin" />
-                              : <Trash2 className="h-3 w-3" />}
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })
+          <div className="rounded-xl border overflow-hidden divide-y">
+            {fields.map((field) => (
+              <FieldNode
+                key={field.id}
+                field={field}
+                depth={0}
+                currentUserId={currentUserId}
+                isAdminUser={isAdminUser}
+                expanded={expanded}
+                toggleExpand={toggleExpand}
+                onCreateChild={openCreateDialog}
+                onDelete={handleDelete}
+                deletingId={deletingId}
+              />
+            ))}
+          </div>
         )}
 
         <Button variant="outline" className="w-full gap-2" onClick={() => openCreateDialog(null)}>
@@ -217,12 +272,9 @@ export function FieldTree() {
               {newFieldParentId ? "Yeni Alt Alan" : "Yeni Ana Alan"}
             </DialogTitle>
           </DialogHeader>
-          {newFieldParentId && (
+          {parentLabel && (
             <p className="text-sm text-muted-foreground">
-              Üst alan:{" "}
-              <span className="font-medium text-foreground">
-                {fields.find((f) => f.id === newFieldParentId)?.name}
-              </span>
+              Üst alan: <span className="font-medium text-foreground">{parentLabel}</span>
             </p>
           )}
           <Input
@@ -236,9 +288,7 @@ export function FieldTree() {
             Google Drive'da otomatik olarak bir klasör oluşturulacak.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>
-              İptal
-            </Button>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>İptal</Button>
             <Button onClick={handleCreate} disabled={creating || !newFieldName.trim()}>
               {creating && <Loader2 className="h-4 w-4 animate-spin" />}
               Oluştur

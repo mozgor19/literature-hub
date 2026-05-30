@@ -13,7 +13,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { TagInput } from "./TagInput"
+import { AuthorInput, parseAuthorsText } from "./AuthorInput"
 import type { FieldWithChildren } from "@/types/database"
+import type { SelectedAuthor } from "./AuthorInput"
+
+// Flatten a recursive field tree into a list with readable path labels
+function flattenFields(
+  fields: FieldWithChildren[],
+  depth = 0
+): Array<{ id: string; label: string }> {
+  return fields.flatMap((f) => [
+    { id: f.id, label: " ".repeat(depth * 4) + (depth > 0 ? "↳ " : "") + f.name },
+    ...flattenFields(f.children, depth + 1),
+  ])
+}
 
 interface SelectedTag {
   id: string | null
@@ -69,7 +82,6 @@ interface ManualOverrides {
   tags: boolean
 }
 
-const NO_SUBFIELD_VALUE = "__none__"
 const VERCEL_SAFE_PDF_LIMIT_MB = 4.5
 
 export function AddArticleForm() {
@@ -78,13 +90,12 @@ export function AddArticleForm() {
 
   // Form fields
   const [title, setTitle] = useState("")
-  const [authors, setAuthors] = useState("")
+  const [authorList, setAuthorList] = useState<SelectedAuthor[]>([])
   const [year, setYear] = useState("")
   const [abstract, setAbstract] = useState("")
   const [sourceUrl, setSourceUrl] = useState("")
   const [notes, setNotes] = useState("")
-  const [selectedTopFieldId, setSelectedTopFieldId] = useState("")
-  const [selectedSubFieldId, setSelectedSubFieldId] = useState("")
+  const [selectedFieldId, setSelectedFieldId] = useState("")
   const [tags, setTags] = useState<SelectedTag[]>([])
   const [file, setFile] = useState<File | null>(null)
   const [extractingMetadata, setExtractingMetadata] = useState(false)
@@ -121,13 +132,9 @@ export function AddArticleForm() {
     queryFn: () => fetch("/api/fields").then((r) => r.json()),
   })
 
-  const selectedTopField = fields.find((f) => f.id === selectedTopFieldId)
-  const subfields = selectedTopField?.children ?? []
+  const flatFields = flattenFields(fields)
   const fileSizeMb = file ? file.size / 1024 / 1024 : 0
   const exceedsVercelSafeLimit = fileSizeMb > VERCEL_SAFE_PDF_LIMIT_MB
-
-  // The effective field_id for the article: subfield if chosen, else top field
-  const effectiveFieldId = selectedSubFieldId || selectedTopFieldId
 
   const markManualOverride = (field: keyof ManualOverrides) => {
     setManualOverrides((current) => {
@@ -158,7 +165,7 @@ export function AddArticleForm() {
   ) => {
     const ov = manualOverridesRef.current
     if (!ov.title && data.title) setTitle(data.title)
-    if (!ov.authors && data.authors) setAuthors(data.authors)
+    if (!ov.authors && data.authors) setAuthorList(parseAuthorsText(data.authors))
     if (!ov.year && data.year) setYear(String(data.year))
     if (!ov.abstract && data.abstract) setAbstract(data.abstract)
     if (!ov.sourceUrl && sourceUrl) setSourceUrl(sourceUrl)
@@ -285,13 +292,7 @@ export function AddArticleForm() {
       const newField = await res.json()
       await refetchFields()
 
-      // Auto-select the new field
-      if (newFieldParentId) {
-        setSelectedSubFieldId(newField.id)
-      } else {
-        setSelectedTopFieldId(newField.id)
-        setSelectedSubFieldId("")
-      }
+      setSelectedFieldId(newField.id)
       setShowNewFieldDialog(false)
       setNewFieldName("")
       toast.success(`"${newField.name}" alanı oluşturuldu`)
@@ -305,11 +306,15 @@ export function AddArticleForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!title.trim() || !authors.trim()) {
-      toast.error("Başlık ve yazarlar zorunludur")
+    if (!title.trim()) {
+      toast.error("Başlık zorunludur")
       return
     }
-    if (!effectiveFieldId) {
+    if (authorList.length === 0) {
+      toast.error("En az bir yazar ekleyin")
+      return
+    }
+    if (!selectedFieldId) {
       toast.error("Lütfen bir alan seçin")
       return
     }
@@ -322,17 +327,20 @@ export function AddArticleForm() {
 
     const existingTagIds = tags.filter((t) => t.id !== null).map((t) => t.id as string)
     const newTagNames = tags.filter((t) => t.id === null).map((t) => t.name)
+    const existingAuthorIds = authorList.filter((a) => a.id !== null).map((a) => a.id as string)
+    const newAuthorNames = authorList.filter((a) => a.id === null).map((a) => a.name)
 
     const formData = new FormData()
     formData.append("title", title.trim())
-    formData.append("authors", authors.trim())
     if (year) formData.append("year", year)
     if (abstract.trim()) formData.append("abstract", abstract.trim())
     if (sourceUrl.trim()) formData.append("source_url", sourceUrl.trim())
     if (notes.trim()) formData.append("notes", notes.trim())
-    formData.append("field_id", effectiveFieldId)
+    formData.append("field_id", selectedFieldId)
     formData.append("tag_ids", JSON.stringify(existingTagIds))
     formData.append("new_tags", JSON.stringify(newTagNames))
+    formData.append("author_ids", JSON.stringify(existingAuthorIds))
+    formData.append("new_authors", JSON.stringify(newAuthorNames))
     formData.append("file", file)
 
     try {
@@ -400,18 +408,15 @@ export function AddArticleForm() {
 
           <div className="space-y-2">
             <div className="flex items-center">
-              <Label htmlFor="authors">Yazarlar <span className="text-destructive">*</span></Label>
+              <Label>Yazarlar <span className="text-destructive">*</span></Label>
               <SourceBadge source={fieldSources.authors as MetadataFieldSource | undefined} />
             </div>
-            <Input
-              id="authors"
-              value={authors}
-              onChange={(e) => {
-                setAuthors(e.target.value)
+            <AuthorInput
+              value={authorList}
+              onChange={(next) => {
+                setAuthorList(next)
                 markManualOverride("authors")
               }}
-              placeholder="Smith J., Doe A., ..."
-              required
             />
           </div>
 
@@ -480,97 +485,36 @@ export function AddArticleForm() {
         <Separator />
 
         {/* Field selection */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           <h3 className="font-medium text-sm">
             Alan Seçimi <span className="text-destructive">*</span>
           </h3>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Ana Alan</Label>
-              <div className="flex gap-2">
-                <Select
-                  value={selectedTopFieldId}
-                  onValueChange={(v) => {
-                    setSelectedTopFieldId(v)
-                    setSelectedSubFieldId("")
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Alan seçin..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fields.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => {
-                    setNewFieldParentId(null)
-                    setShowNewFieldDialog(true)
-                  }}
-                  title="Yeni ana alan oluştur"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {selectedTopFieldId && (
-              <div className="space-y-2">
-                <Label>Alt Alan (isteğe bağlı)</Label>
-                <div className="flex gap-2">
-                  <Select
-                    value={selectedSubFieldId}
-                    onValueChange={(value) =>
-                      setSelectedSubFieldId(value === NO_SUBFIELD_VALUE ? "" : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Alt alan seçin..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_SUBFIELD_VALUE}>—</SelectItem>
-                      {subfields.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      setNewFieldParentId(selectedTopFieldId)
-                      setShowNewFieldDialog(true)
-                    }}
-                    title="Yeni alt alan oluştur"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
+          <div className="flex gap-2">
+            <Select value={selectedFieldId} onValueChange={setSelectedFieldId}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Alan seçin..." />
+              </SelectTrigger>
+              <SelectContent>
+                {flatFields.map(({ id, label }) => (
+                  <SelectItem key={id} value={id} className="font-mono text-sm">
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                setNewFieldParentId(selectedFieldId || null)
+                setShowNewFieldDialog(true)
+              }}
+              title={selectedFieldId ? "Seçili alanın altına yeni alan ekle" : "Yeni ana alan oluştur"}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
-
-          {effectiveFieldId && selectedTopField && (
-            <p className="text-xs text-muted-foreground">
-              Klasör:{" "}
-              <span className="font-medium text-foreground">
-                {selectedSubFieldId
-                  ? `${selectedTopField.name} / ${subfields.find((f) => f.id === selectedSubFieldId)?.name}`
-                  : selectedTopField.name}
-              </span>
-            </p>
-          )}
         </div>
 
         <Separator />
@@ -689,7 +633,7 @@ export function AddArticleForm() {
             <p className="text-sm text-muted-foreground">
               Üst alan:{" "}
               <span className="font-medium text-foreground">
-                {fields.find((f) => f.id === newFieldParentId)?.name}
+                {flatFields.find((f) => f.id === newFieldParentId)?.label.trim()}
               </span>
             </p>
           )}

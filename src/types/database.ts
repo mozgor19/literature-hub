@@ -25,9 +25,9 @@ export type Database = {
         Relationships: []
       }
       articles: {
-        Row: { id: string; title: string; authors: string; year: number | null; abstract: string | null; source_url: string | null; notes: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by: string | null; added_at: string }
-        Insert: { id?: string; title: string; authors: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by?: string | null; added_at?: string }
-        Update: { id?: string; title?: string; authors?: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; field_id?: string; drive_file_id?: string; drive_web_link?: string; drive_folder_path?: string; added_by?: string | null; added_at?: string }
+        Row: { id: string; title: string; authors: string; year: number | null; abstract: string | null; source_url: string | null; notes: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by: string | null; added_at: string; authors_needs_review: boolean }
+        Insert: { id?: string; title: string; authors: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; field_id: string; drive_file_id: string; drive_web_link: string; drive_folder_path: string; added_by?: string | null; added_at?: string; authors_needs_review?: boolean }
+        Update: { id?: string; title?: string; authors?: string; year?: number | null; abstract?: string | null; source_url?: string | null; notes?: string | null; field_id?: string; drive_file_id?: string; drive_web_link?: string; drive_folder_path?: string; added_by?: string | null; added_at?: string; authors_needs_review?: boolean }
         Relationships: [
           { foreignKeyName: "articles_field_id_fkey"; columns: ["field_id"]; isOneToOne: false; referencedRelation: "fields"; referencedColumns: ["id"] },
           { foreignKeyName: "articles_added_by_fkey"; columns: ["added_by"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
@@ -58,6 +58,21 @@ export type Database = {
           { foreignKeyName: "project_articles_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "projects"; referencedColumns: ["id"] },
           { foreignKeyName: "project_articles_article_id_fkey"; columns: ["article_id"]; isOneToOne: false; referencedRelation: "articles"; referencedColumns: ["id"] },
           { foreignKeyName: "project_articles_added_by_fkey"; columns: ["added_by"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
+        ]
+      }
+      authors: {
+        Row: { id: string; name: string; created_at: string }
+        Insert: { id?: string; name: string; created_at?: string }
+        Update: { id?: string; name?: string; created_at?: string }
+        Relationships: []
+      }
+      article_authors: {
+        Row: { article_id: string; author_id: string; position: number }
+        Insert: { article_id: string; author_id: string; position?: number }
+        Update: { article_id?: string; author_id?: string; position?: number }
+        Relationships: [
+          { foreignKeyName: "article_authors_article_id_fkey"; columns: ["article_id"]; isOneToOne: false; referencedRelation: "articles"; referencedColumns: ["id"] },
+          { foreignKeyName: "article_authors_author_id_fkey"; columns: ["author_id"]; isOneToOne: false; referencedRelation: "authors"; referencedColumns: ["id"] }
         ]
       }
       comments: {
@@ -98,7 +113,12 @@ export type DBProject = Database["public"]["Tables"]["projects"]["Row"]
 export type DBProjectArticle = Database["public"]["Tables"]["project_articles"]["Row"]
 
 export type DBComment = Database["public"]["Tables"]["comments"]["Row"]
+export type DBAuthor = Database["public"]["Tables"]["authors"]["Row"]
 export type DBNotification = Database["public"]["Tables"]["notifications"]["Row"]
+
+export interface AuthorWithCount extends DBAuthor {
+  article_count: number
+}
 
 export interface NotificationWithDetails extends DBNotification {
   actor: Pick<DBUser, "id" | "name" | "email" | "image"> | null
@@ -111,6 +131,7 @@ export interface ArticleWithRelations extends DBArticle {
   added_by_user: Pick<DBUser, "id" | "name" | "email"> | null
   project_count: number
   comment_count: number
+  normalized_authors: Pick<DBAuthor, "id" | "name">[]
 }
 
 export interface CommentWithUser extends DBComment {
@@ -119,5 +140,5 @@ export interface CommentWithUser extends DBComment {
 }
 
 export interface FieldWithChildren extends DBField {
-  children: DBField[]
+  children: FieldWithChildren[]
 }

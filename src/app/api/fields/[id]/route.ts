@@ -10,19 +10,22 @@ type Params = { params: Promise<{ id: string }> }
 export async function DELETE(_req: Request, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (!isAdmin(session.user.email)) {
-    return NextResponse.json({ error: "Yalnızca adminler alan silebilir" }, { status: 403 })
-  }
 
   const { id } = await params
 
   const { data: field } = await supabase
     .from("fields")
-    .select("id, name, drive_folder_id, parent_id")
+    .select("id, name, drive_folder_id, parent_id, created_by")
     .eq("id", id)
     .single()
 
   if (!field) return NextResponse.json({ error: "Alan bulunamadı" }, { status: 404 })
+
+  // Permission: creator OR admin (guard applies equally — no admin override on non-empty fields)
+  const canDelete = isAdmin(session.user.email) || field.created_by === session.user.id
+  if (!canDelete) {
+    return NextResponse.json({ error: "Bu alanı yalnızca oluşturan kişi veya admin silebilir" }, { status: 403 })
+  }
 
   // Block deletion if this field still has articles
   const { count: articleCount } = await supabase

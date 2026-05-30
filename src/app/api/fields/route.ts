@@ -5,22 +5,22 @@ import { supabase } from "@/lib/supabase"
 import { createDriveFolder } from "@/lib/drive"
 import type { FieldWithChildren } from "@/types/database"
 
+import type { DBField } from "@/types/database"
+
+function buildFieldTree(flat: DBField[], parentId: string | null = null): FieldWithChildren[] {
+  return flat
+    .filter((f) => f.parent_id === parentId)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((f) => ({ ...f, children: buildFieldTree(flat, f.id) }))
+}
+
 // Fields change rarely (only on create). Cache the tree server-side and
 // invalidate via a tag so every page load doesn't hit Supabase.
 const getCachedFields = unstable_cache(
   async (): Promise<FieldWithChildren[]> => {
-    const { data, error } = await supabase
-      .from("fields")
-      .select("*")
-      .order("name")
+    const { data, error } = await supabase.from("fields").select("*")
     if (error) throw new Error(error.message)
-    const fields = data ?? []
-    const topLevel = fields.filter((f) => f.parent_id === null)
-    const subfields = fields.filter((f) => f.parent_id !== null)
-    return topLevel.map((f) => ({
-      ...f,
-      children: subfields.filter((c) => c.parent_id === f.id),
-    }))
+    return buildFieldTree(data ?? [])
   },
   ["fields-tree"],
   { tags: ["fields"], revalidate: 300 }
