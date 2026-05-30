@@ -2,6 +2,8 @@
 
 Araştırma grubunun ortak makale havuzu. Makaleleri Google Drive'da PDF olarak depolar, Supabase/Postgres'te metadata (alan, etiket, proje referansları) tutar.
 
+**Canlı:** [literature-hub-amber.vercel.app](https://literature-hub-amber.vercel.app)
+
 ## Genel Bakış
 
 - **Havuz (Pool)**: Tüm makaleler alan bazlı Drive klasör hiyerarşisinde saklanır.
