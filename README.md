@@ -7,7 +7,19 @@ Araştırma grubunun ortak makale havuzu. Makaleleri Google Drive'da PDF olarak 
 - **Havuz (Pool)**: Tüm makaleler alan bazlı Drive klasör hiyerarşisinde saklanır.
 - **Projeler**: Havuzdaki makalelere referans veren koleksiyonlar. Dosya kopyalanmaz.
 - **Alanlar**: Drive klasörlerine 1:1 eşlenen hiyerarşi (Ana Alan → Alt Alan).
-- **Etiketler**: Çok boyutlu sınıflandırma; bir makale birden fazla alanda yer alabilir.
+- **Etiketler**: Çok boyutlu sınıflandırma; bir makale birden fazla etiketle işaretlenebilir.
+- **Kuruluşlar**: Makalelere kuruluş/üniversite bilgisi eklenebilir; filtrele ve listede görüntüle.
+- **Yazarlar**: Makale yazar bilgisi ayrı alan olarak saklanır.
+- **Git Repo**: Makaleye ilişkilendirilmiş kaynak kodu deposu için Git repo URL alanı.
+- **Yorumlar**: Her makale detay sayfasında yorum yapılabilir; yorum sayısı liste görünümünde rozet olarak gösterilir.
+
+## Arayüz Özellikleri
+
+- **Responsive tasarım**: Mobilde kart görünümü, masaüstünde tablo görünümü.
+- **Tooltip**: Tüm ikon butonların üzerine gelindiğinde açıklama gösterilir (klavye erişilebilir).
+- **İki aşamalı silme**: Makale silme işlemi ikinci bir onay adımı gerektirir; geri alınamaz işlem uyarısı gösterilir.
+- **Proje sayacı**: Makalenin kaç projede yer aldığı liste görünümünde rozet olarak gösterilir.
+- **PWA**: Tarayıcıdan masaüstüne veya ana ekrana yüklenebilir (Progressive Web App desteği).
 
 ## Kurulum
 

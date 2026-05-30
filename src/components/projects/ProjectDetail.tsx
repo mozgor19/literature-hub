@@ -13,6 +13,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { formatYear, truncate, formatDate } from "@/lib/utils"
+import { Tooltip } from "@/components/ui/tooltip"
 
 interface ProjectArticle {
   id: string
@@ -38,19 +39,20 @@ interface ProjectData {
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-7 w-7"
-      title="Bağlantıyı kopyala"
-      onClick={async () => {
-        await navigator.clipboard.writeText(text)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      }}
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-    </Button>
+    <Tooltip content={copied ? "Kopyalandı!" : "Drive bağlantısını kopyala"}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        onClick={async () => {
+          await navigator.clipboard.writeText(text)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        }}
+      >
+        {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+      </Button>
+    </Tooltip>
   )
 }
 
@@ -162,16 +164,20 @@ export function ProjectDetail({ id }: { id: string }) {
                   </div>
                 )}
                 <div className="flex items-center justify-end gap-1 pt-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
-                    <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </Button>
-                  <Button variant="ghost" size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Projeden çıkar"
-                    onClick={() => removeArticle(article.id, article.title)} disabled={removing === article.id}>
-                    {removing === article.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                  </Button>
+                  <Tooltip content="Drive'da aç">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                      <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </Button>
+                  </Tooltip>
+                  <Tooltip content="Projeden çıkar">
+                    <Button variant="ghost" size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeArticle(article.id, article.title)} disabled={removing === article.id}>
+                      {removing === article.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                    </Button>
+                  </Tooltip>
                 </div>
               </div>
             ))}
@@ -213,16 +219,20 @@ export function ProjectDetail({ id }: { id: string }) {
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">
                         <CopyBtn text={article.drive_web_link} />
-                        <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
-                          <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        </Button>
-                        <Button variant="ghost" size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Projeden çıkar"
-                          onClick={() => removeArticle(article.id, article.title)} disabled={removing === article.id}>
-                          {removing === article.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                        </Button>
+                        <Tooltip content="Drive'da aç">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                            <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content="Projeden çıkar">
+                          <Button variant="ghost" size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeArticle(article.id, article.title)} disabled={removing === article.id}>
+                            {removing === article.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                          </Button>
+                        </Tooltip>
                       </div>
                     </TableCell>
                   </TableRow>

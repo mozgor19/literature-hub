@@ -37,7 +37,7 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000)
   }
   return (
-    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copy} title="Bağlantıyı kopyala">
+    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copy}>
       {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
     </Button>
   )
@@ -151,28 +151,36 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                   </Badge>
                 )}
                 <div className="ml-auto flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Projeye ekle"
-                    onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
-                    <FolderPlus className="h-3.5 w-3.5" />
-                  </Button>
+                  <Tooltip content="Projeye ekle">
+                    <Button variant="ghost" size="icon" className="h-7 w-7"
+                      onClick={() => setProjectDialog({ articleId: article.id, title: article.title })}>
+                      <FolderPlus className="h-3.5 w-3.5" />
+                    </Button>
+                  </Tooltip>
                   {article.git_repo_url && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Git deposu">
-                      <a href={article.git_repo_url} target="_blank" rel="noopener noreferrer">
-                        <GitBranch className="h-3.5 w-3.5" />
+                    <Tooltip content="Git deposunu aç">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                        <a href={article.git_repo_url} target="_blank" rel="noopener noreferrer">
+                          <GitBranch className="h-3.5 w-3.5" />
+                        </a>
+                      </Button>
+                    </Tooltip>
+                  )}
+                  <Tooltip content="Drive'da aç">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                      <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3.5 w-3.5" />
                       </a>
                     </Button>
-                  )}
-                  <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Drive'da aç">
-                    <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </Button>
+                  </Tooltip>
                   {canDeleteArticle && (
-                    <Button variant="ghost" size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive" title="Makaleyi sil"
-                      onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <Tooltip content="Makaleyi sil">
+                      <Button variant="ghost" size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteDialog({ articleId: article.id, title: article.title, step: 1 })}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </Tooltip>
                   )}
                 </div>
               </div>

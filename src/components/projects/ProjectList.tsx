@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Skeleton } from "@/components/ui/skeleton"
 import { DeleteProjectDialog } from "@/components/projects/DeleteProjectDialog"
 import { formatDate } from "@/lib/utils"
+import { Tooltip } from "@/components/ui/tooltip"
 import type { DBProject } from "@/types/database"
 
 type ProjectWithCount = DBProject & { article_count: number }
@@ -104,17 +105,18 @@ export function ProjectList() {
                 </div>
               </CardContent>
             </Link>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                setDeleteDialog({ id: project.id, name: project.name })
-              }}
-              className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              title="Projeyi sil"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <Tooltip content="Projeyi sil" side="top">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  setDeleteDialog({ id: project.id, name: project.name })
+                }}
+                className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </Tooltip>
           </Card>
         ))}
       </div>
