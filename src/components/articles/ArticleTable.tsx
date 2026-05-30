@@ -37,9 +37,11 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000)
   }
   return (
-    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copy}>
-      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-    </Button>
+    <Tooltip content={copied ? "Kopyalandı!" : "Drive bağlantısını kopyala"}>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copy}>
+        {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+      </Button>
+    </Tooltip>
   )
 }
 
@@ -271,9 +273,7 @@ export function ArticleTable({ articles, isLoading, total, page, limit, onPageCh
                           </Button>
                         </Tooltip>
                       )}
-                      <Tooltip content="Drive bağlantısını kopyala">
-                        <CopyButton text={article.drive_web_link} />
-                      </Tooltip>
+                      <CopyButton text={article.drive_web_link} />
                       <Tooltip content="Drive'da aç">
                         <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
                           <a href={article.drive_web_link} target="_blank" rel="noopener noreferrer">
