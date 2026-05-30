@@ -9,6 +9,7 @@ import { CommentSection } from "@/components/comments/CommentSection"
 import { ArrowLeft, ExternalLink, Calendar, User, FolderOpen, GitBranch, Building2 } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
+import { BibtexArticleButton } from "@/components/bibtex/BibtexArticleButton"
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -125,6 +126,15 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
               </a>
             </Button>
           )}
+          <BibtexArticleButton
+            article={{
+              title: article.title,
+              authors: article.authors,
+              year: article.year,
+              source_url: article.source_url,
+              organizations: orgs,
+            }}
+          />
         </div>
       </div>
 

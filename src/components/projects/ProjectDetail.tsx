@@ -3,12 +3,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
 import { toast } from "sonner"
-import { ExternalLink, Copy, X, ArrowLeft, Check, Loader2, Trash2 } from "lucide-react"
+import { ExternalLink, Copy, X, ArrowLeft, Check, Loader2, Trash2, BookMarked } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DeleteProjectDialog } from "@/components/projects/DeleteProjectDialog"
+import { BibtexDialog } from "@/components/bibtex/BibtexDialog"
+import { articlesToBibtex } from "@/lib/bibtex"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
@@ -60,6 +62,7 @@ export function ProjectDetail({ id }: { id: string }) {
   const queryClient = useQueryClient()
   const [removing, setRemoving] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [bibtexOpen, setBibtexOpen] = useState(false)
 
   const { data: project, isLoading } = useQuery<ProjectData>({
     queryKey: ["project", id],
@@ -116,10 +119,18 @@ export function ProjectDetail({ id }: { id: string }) {
               Projeler
             </Link>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(true)}>
-            <Trash2 className="h-4 w-4" />
-            Projeyi Sil
-          </Button>
+          <div className="flex items-center gap-2">
+            {project.articles.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setBibtexOpen(true)}>
+                <BookMarked className="h-4 w-4 mr-1" />
+                BibTeX
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(true)}>
+              <Trash2 className="h-4 w-4" />
+              Projeyi Sil
+            </Button>
+          </div>
         </div>
         <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
         {project.description && (
@@ -249,6 +260,13 @@ export function ProjectDetail({ id }: { id: string }) {
         projectId={id}
         projectName={project.name}
         redirectToProjects={true}
+      />
+
+      <BibtexDialog
+        bibtex={articlesToBibtex(project.articles)}
+        filename={`${project.name.slice(0, 40).replace(/[^a-zA-Z0-9\s-]/g, "").trim().replace(/\s+/g, "_")}.bib`}
+        open={bibtexOpen}
+        onOpenChange={setBibtexOpen}
       />
     </div>
   )
